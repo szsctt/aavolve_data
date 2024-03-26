@@ -1,0 +1,25 @@
+digraph {
+    a [label = "consensus"]
+    b [label = "read alignment"]
+    c [label = "per-read variants"]
+    d [label = "parent alignment"]
+    e [label = "parent variants"]
+    f [label = "accepted variants"]
+    g [label = "most likley parents"]
+    h [label = "breakpoints"]
+    i [label = "corrected reads"]
+    j [label = "corrected read counts"]
+    k [label = "translate corrected reads"]
+    l [label = "translated read counts"]
+    a -> b
+    b -> c
+    d -> e
+    e -> f
+    c -> f
+    f -> g
+    g -> h
+    f -> i
+    i -> j
+    j -> k
+    k -> l
+}

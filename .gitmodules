@@ -1,0 +1,3 @@
+[submodule "AAVolve"]
+	path = AAVolve
+	url = https://github.com/szsctt/AAVolve.git
