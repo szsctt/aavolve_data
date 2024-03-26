@@ -7,15 +7,18 @@ digraph {
     f [label = "accepted variants"]
     g [label = "most likley parents"]
     h [label = "breakpoints"]
-    i [label = "corrected reads"]
-    j [label = "corrected read counts"]
+    i [label = "count distinct reads"]
+    j [label = "apply variants to reference"]
     k [label = "translate corrected reads"]
     l [label = "translated read counts"]
+    m [label = "variant frequency"]
     a -> b
     b -> c
     d -> e
     e -> f
     c -> f
+    c -> m [style = "dotted"]
+    m -> f [style = "dotted"]
     f -> g
     g -> h
     f -> i
