@@ -8,14 +8,16 @@ OUTDIR=out/aav2_benchmarking
 mkdir -p $OUTDIR
 
 # singlarity containers
+SINGDIR='singularity'
+mdir -p $SINGDIR
 PYIMG="docker://szsctt/lr_pybio:py310"
-PYSIF="pybio.sif"
+PYSIF="${SINNGDIR}/pybio.sif"
 MMIMG="docker://quay.io/biocontainers/minimap2:2.28--he4a0461_0"
-MMSIF="minimap2.sif"
+MMSIF="${SINGDIR}/minimap2.sif"
 SAMIMG="docker://quay.io/biocontainers/samtools:1.19.2--h50ea8bc_1"
-SAMSIF="samtools.sif"
+SAMSIF="${SINGDIR}/samtools.sif"
 IGVIMG="docker://quay.io/biocontainers/igv:2.17.3--hdfd78af_0"
-IGVSIF="igv.sif"
+IGVSIF="${SINGDIR}/igv.sif"
 
 # pull singularity containers
 if [ ! -e $PYSIF ]; then
