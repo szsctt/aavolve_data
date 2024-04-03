@@ -1,0 +1,83 @@
+#!/bin/bash
+set -euo pipefail
+
+# inputs and outputs
+AAV2="data/references/wtAAV2.fa"
+READS="out/c3poa/aav2_np-cc/split/R2C2_Consensus.fasta.gz"
+OUTDIR=out/aav2_benchmarking
+mkdir -p $OUTDIR
+
+# singlarity containers
+PYIMG="docker://szsctt/lr_pybio:py310"
+PYSIF="pybio.sif"
+MMIMG="docker://quay.io/biocontainers/minimap2:2.28--he4a0461_0"
+MMSIF="minimap2.sif"
+SAMIMG="docker://quay.io/biocontainers/samtools:1.19.2--h50ea8bc_1"
+SAMSIF="samtools.sif"
+IGVIMG="docker://quay.io/biocontainers/igv:2.17.3--hdfd78af_0"
+IGVSIF="igv.sif"
+
+# pull singularity containers
+if [ ! -e $PYSIF ]; then
+    singularity pull $PYSIF $PYIMG
+fi
+
+if [ ! -e $MMSIF ]; then
+    singularity pull $MMSIF $MMIMG
+fi
+
+if [ ! -e $SAMSIF ]; then
+    singularity pull $SAMSIF $SAMIMG
+fi
+
+if [ ! -e $IGVSIF ]; then
+    singularity pull $IGVSIF $IGVIMG
+fi
+
+# separate consensus reads by number of repeats
+SPLITREADS="${OUTDIR}/consensus_reads"
+mkdir -p $SPLITREADS
+singularity exec \
+    $PYSIF \
+    python scripts/aav2_benchmarking/filter_consensus_repeats.py \
+    --input $READS \
+    --output $SPLITREADS
+
+# align consensus reads to reference
+ALN="${OUTDIR}/consensus_aln"
+mkdir -p $ALN
+for f in $(ls $SPLITREADS); do
+    BASE=$(basename $f .fa)
+
+    # align reads to reference
+    singularity exec $MMSIF \
+        minimap2 -ax map-ont $AAV2 $SPLITREADS/$f | \
+    singularity exec $SAMSIF \
+        samtools sort -o $ALN/${BASE}.bam -
+    singularity exec $SAMSIF \
+        samtools index $ALN/${BASE}.bam
+
+    # get reads that cover the full length of the reference
+    singularity exec $SAMSIF \
+        samtools view -h $ALN/$BASE.bam AAV2:1-2 | \
+    singularity exec $SAMSIF \
+        samtools sort -o $ALN/$BASE.tmp.bam -
+    singularity exec $SAMSIF \
+        samtools index $ALN/${BASE}.tmp.bam
+    singularity exec $SAMSIF \
+        samtools view -h $ALN/${BASE}.tmp.bam AAV2:2207-2208 | \
+    singularity exec $SAMSIF \
+        samtools sort -o $ALN/${BASE}.fl.bam -
+    singularity exec $SAMSIF \
+        samtools index $ALN/${BASE}.fl.bam
+    rm $ALN/${BASE}.tmp.bam $ALN/${BASE}.tmp.bam.bai
+
+    # count nubmer of full-length reads
+    singularity exec $SAMSIF \
+        samtools view $ALN/${BASE}.fl.bam | wc -l > $ALN/${BASE}.fl.count.txt
+done
+
+# create IGV image
+singularity exec \
+    $IGVSIF \
+    igv -b scripts/aav2_benchmarking/num_repeats_igv.bat
