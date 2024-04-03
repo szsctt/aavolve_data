@@ -1,0 +1,361 @@
+---
+title: "New dataset 03/01/2024"
+date: "`r Sys.Date()`"
+output: 
+  html_notebook:
+    code_folding: hide
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 5,
+  fig.height = 4
+)
+library(tidyverse)
+library(patchwork)
+ggplot2::theme_set(ggplot2::theme_minimal())
+here::i_am("notebooks/2024-03-26_new-dataset_r0_r1_gel.Rmd")
+```
+
+Exploring some of the results of the nanopore dataset obtained 03/01/2024.  This dataset came from two samples: a packaged, shuffled library (AAV2N496D, AAV3b, AAV8 and AAV9), as well as the same library after one round of selection.
+
+
+## Gel extraction - number of repeats
+
+This dataset was generated with rolling circle amplification.  In an attempt to increase the number of repeats per read, Deb ran the RCA product on a gel and cut out a band.  We sent both the gel-extracted and unextracted RCA product to the sequencing facility.  
+
+I'd like to look at the the number of repeats observed in each case.
+
+```{r}
+# import data
+samples <- c("r0_np-cc_repeat", "r0_np-cc_gel-extract", "r1_np-cc", "r1_np-cc_gel-extract")
+data <- readr::read_tsv(here::here("out", "c3poa", samples, "repeat_counts.tsv"), id="filename") %>% 
+  mutate(sample = basename(dirname(filename))) %>%
+  mutate(stage = stringr::str_extract(sample, "r\\d")) %>%
+  mutate(gel_extract = stringr::str_detect(sample, "gel-extract")) %>% 
+  group_by(filename) %>% 
+  mutate(frac = Count / sum(Count)) %>% 
+  ungroup() %>% 
+  arrange(Repeats, sample)
+
+data
+```
+
+Plotting the distribution of repeat nubmers in the dataset.
+
+```{r}
+data %>% 
+  ggplot(aes(x = Repeats, y = frac, color=gel_extract, group=filename)) +
+  geom_line() + 
+  scale_x_log10() +
+  labs(x="Repeats", y="Fraction of reads") 
+```
+
+In the benchmarking experiments, we saw that the accuracy of the consesnsus sequecnes reached a plateau at around 3 or more repeats.  Let's split the dataset into 0-2 repeats and 3+ repeats and plot.
+
+```{r}
+data <- data %>% 
+  mutate(repeat_group = ifelse(Repeats < 3, "0-2", "3+"))
+
+tbl <- data %>%
+  group_by(sample, stage, gel_extract, repeat_group) %>%
+  summarise(count = sum(Count)) %>% 
+  mutate(frac = count / sum(count)) 
+
+tbl %>% 
+  arrange(repeat_group, stage, gel_extract)
+```
+
+```{r}
+tbl %>%
+  ggplot(aes(x = sample, y = frac, fill = repeat_group)) +
+  geom_bar(stat = "identity") +
+  facet_wrap(~stage, scales = "free")+
+  labs(x = "Sample", y = "Fraction of reads") 
+```
+
+It looks like gel extraction actually makes things worse - the proportion of reads with 0-2 repeats is higher in those samples.
+
+Let's also check the number of reads in the whole pipeline.
+
+```{r}
+read_count_files <- list.files(here::here("out", "qc"), pattern="*tsv", full.names=TRUE)
+rc <- readr::read_tsv(read_count_files, id = "count_file", col_names = c("filename", "file_type", "count")) %>% 
+  rowwise() %>%
+  mutate(proc_stage = case_when(
+    file_type == "fastq" && !stringr::str_detect(filename, "sanger") ~ "Input",
+    file_type == "fasta" && stringr::str_detect(filename, "c3poa_filt") ~ "Filtered by repeats",
+    file_type == "fasta" && stringr::str_detect(filename, "c3poa") ~ "Consensus",
+    file_type == "fasta" && stringr::str_detect(filename, "sanger") ~ "Input",
+    file_type == "variant_tsv" ~ "Filtered by reference coverage",
+    file_type == "pivoted_tsv" ~ "Filtered by errors in variable regions",
+    file_type == "distinct_read_counts" && stringr::str_detect(filename, "nt") ~ "Distinct reads (nucleotide)",
+    file_type == "distinct_read_counts" && stringr::str_detect(filename, "aa") ~ "Distinct reads (amino acid)",
+  )) %>% 
+  mutate(sample = basename(count_file)) %>% 
+  mutate(sample = stringr::str_replace(sample, "_read-counts.tsv", "")) 
+```
+
+Plotting the fraction of the input reads at each stage.
+
+```{r}
+
+rc_gel <- rc %>% 
+  filter(sample %in% samples) 
+
+input_counts <- rc %>% 
+  filter(proc_stage == "Input") %>% 
+  select(sample, count) %>% 
+  rename(input_count = count)
+
+rc_gel <- rc_gel %>% 
+  left_join(input_counts, by="sample") %>% 
+  mutate(frac = count / input_count) 
+
+rc_gel %>%
+  filter(!stringr::str_detect(proc_stage, "Distinct")) %>%
+  mutate(proc_stage = factor(proc_stage, levels = c("Input", "Consensus", "Filtered by repeats", "Filtered by reference coverage", "Filtered by errors in variable regions"))) %>%
+  mutate(selection_round = stringr::str_extract(sample, "r\\d")) %>%
+  mutate(gel_extract = stringr::str_detect(sample, "gel-extract")) %>%
+  ggplot(aes(x = proc_stage, y = frac, color = selection_round, linetype=gel_extract, group=sample)) +
+  geom_line() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  labs(x = "Processing stage", y = "Fraction of reads")
+```
+
+We end up with more useful reads from the gel-extracted samples compared to the unextracted samples.
+
+
+
+Let's also plot the nubmer of reads at each stage for all np-cc samples.
+
+```{r}
+stages <- c("Input", "Consensus", "Filtered by repeats", "Filtered by reference coverage", "Filtered by errors in variable regions")
+
+rc %>%
+  filter(stringr::str_detect(sample, "np-cc")) %>%
+  filter(!stringr::str_detect(sample, "aav2")) %>%
+  filter(proc_stage %in% stages) %>% 
+  left_join(input_counts, by="sample") %>%
+  mutate(frac = count / input_count) %>%
+  mutate(proc_stage = factor(proc_stage, levels = stages)) %>%
+  ggplot(aes(x = proc_stage, y = frac, color = sample, group=sample)) +
+  geom_line() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  labs(x = "Processing stage", y = "Fraction of reads")
+
+ggsave("read_counts.png", width=8, height=6)
+```
+
+What fraction of the input reads did we end up with in each case?
+
+```{r}
+rc %>%
+  filter(!stringr::str_detect(sample, "aav2")) %>%
+  filter(proc_stage %in% stages) %>% 
+  left_join(input_counts, by="sample") %>%
+  mutate(frac = count / input_count) %>%
+  filter(proc_stage == "Filtered by errors in variable regions")
+```
+
+Plotting for all samples:
+
+```{r}
+rc %>%
+  filter(!stringr::str_detect(sample, "aav2")) %>%
+  mutate(seq_tech = stringr::str_extract(sample, "np-cc|np|pb|sanger")) %>%
+  filter(proc_stage %in% stages) %>% 
+  left_join(input_counts, by="sample") %>%
+  mutate(frac = count / input_count) %>%
+  mutate(proc_stage = factor(proc_stage, levels = stages)) %>%
+  ggplot(aes(x = proc_stage, y = frac, color = sample, group=sample)) +
+  geom_line() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  labs(x = "Processing stage", y = "Fraction of reads")
+
+ggsave("read_counts2.png", width=8, height=6)
+```
+
+## How well did the selection work?
+
+It would also be good to see how well the selection worked - that is, how the diversity of the library changed throughout selection.
+
+I start by loading the amino acid sequences at each round, and looking at the distribuion of the nubmer of counts.
+
+```{r}
+aa_files <- list.files(here::here("out", "corrected", "counts"), pattern = "aa-seq-counts.tsv.gz", full.names=TRUE)
+# load only np-cc data
+aa_files <- aa_files[stringr::str_detect(aa_files, "np-cc")]
+
+# read counts
+aa <- readr::read_tsv(aa_files, id = "filename") %>% 
+  mutate(sample = basename(filename)) %>% 
+  mutate(sample = stringr::str_replace(sample, "_aa-seq-counts.tsv.gz", "")) %>% 
+  mutate(stage = stringr::str_extract(sample, "r\\d")) %>% 
+  mutate(gel_extract = stringr::str_detect(sample, "gel-extract")) 
+
+# combine replicates from the same round
+aa <- aa %>% 
+  group_by(stage, sequence) %>% 
+  summarise(count = sum(count)) %>%
+  group_by(stage) %>%
+  mutate(frac = count / sum(count)) 
+
+aa %>%
+  mutate(stage = stringr::str_replace(stage, "r", "Round ")) %>%
+  ggplot(aes(x = frac, color = stage)) +
+  stat_ecdf(geom="step") +
+  scale_x_log10() +
+  labs(x = "Fraction of reads", y = "ECDF")
+```
+
+Plotting the same data as a violin plot.
+
+```{r}
+aa %>%
+  mutate(stage = stringr::str_replace(stage, "r", "Round ")) %>%
+  ggplot(aes(x = stage, y = frac, fill = stage)) +
+  geom_violin() +
+  labs(x = "Round", y = "Fraction of reads") +
+  scale_y_log10()
+```
+
+
+Are there any reads that were seen in different rounds?  Counting the number of reads that were seen in n rounds:
+
+```{r}
+aa %>% 
+  group_by(sequence) %>%
+  summarise(rounds = n_distinct(stage)) %>%
+  filter(rounds > 1) %>%
+  arrange(desc(rounds)) %>% 
+  count(rounds)
+```
+
+
+For each sequence that was seen in both rounds 0 and 1, let's plot the change in fraction of reads for that sequence.
+
+
+```{r}
+n_reads <- aa %>% 
+  filter(stage %in% c("r0", "r1")) %>%
+  group_by(sequence) %>% 
+  summarise(n = n()) %>% 
+  filter(n > 1) %>%
+  nrow()
+
+p1 <- aa %>%
+  filter(stage %in% c("r0", "r1")) %>%
+  group_by(sequence) %>%
+  filter(n() > 1) %>% 
+  ggplot(aes(x = stage, y = frac, group=sequence)) +
+  geom_line(alpha = 0.05) +
+  geom_point() +
+  scale_y_log10() +
+  labs(x = "Selection round", y = "Fraction of reads", title=glue::glue("Round 0 -> 1 ({n_reads} sequences)"))
+
+p1
+```
+
+Similarly, let's look at the sequences that were seen in both rounds 0 and 5.
+
+```{r}
+n_reads <- aa %>% 
+  filter(stage %in% c("r0", "r5")) %>%
+  group_by(sequence) %>% 
+  summarise(n = n()) %>% 
+  filter(n > 1) %>%
+  nrow()
+
+
+p2 <- aa %>% 
+  filter(stage %in% c("r0", "r5")) %>%
+  group_by(sequence) %>%
+  filter(n() > 1) %>% 
+  ggplot(aes(x = stage, y = frac, group=sequence)) +
+  geom_line(alpha = 0.2) +
+  geom_point() +
+  scale_y_log10() +
+  labs(x = "Selection round", y = "Fraction of reads", title = glue::glue("Round 0 -> 5 ({n_reads} sequences)"))
+
+p2
+```
+
+```{r fig.width=8, fig.height=4}
+p1 + p2
+
+```
+
+
+
+Let's look at the parents for the top 1000 sequences in each round
+
+
+```{r}
+break_files <- list.files(here::here("out", "parents", "counts"), pattern = "parent-counts.tsv.gz", full.names=TRUE)
+break_files <- break_files[stringr::str_detect(break_files, "np-cc")]
+break_files <- break_files[!stringr::str_detect(break_files, "aav2")]
+
+# load 1000  rows from each file
+break_df <- tibble(filename = break_files) %>%
+  rowwise() %>%
+  mutate(data = list(readr::read_tsv(filename, n_max = 1000))) %>%
+  mutate(sample = basename(filename)) %>%
+  mutate(sample = stringr::str_replace(sample, "_parent-counts.tsv.gz", "")) %>%
+  mutate(stage = stringr::str_extract(sample, "r\\d")) %>%
+  unnest(data)
+
+break_df %>%
+  arrange(stage, desc(count)) %>%
+  mutate(id = row_number()) %>%
+  pivot_longer( c(contains("sub"), contains("ins"), contains("del")), names_to = "variant", values_to = "parent") %>% 
+  mutate(position = as.numeric(stringr::str_extract(variant, "^\\d+"))) %>% 
+  mutate(parent = ifelse(stringr::str_detect(parent, ","), "multiple", parent)) %>%
+  ggplot(aes(x = as.factor(position), y=id, fill = parent)) +
+  geom_raster() +
+  facet_grid(rows = vars(stage), scales="free") +
+  labs(x = "Reference position", y="Read")
+```
+
+Let's plot the heatmaps for the top 1000 reads for each round of selection.
+
+```{r, fig.width = 17, fig.height = 5}
+load_data <- function(fname) {
+d <- here::here("out", "corrected", "dmat", fname) %>% 
+  scan() %>% 
+  matrix(ncol = 1000, byrow=TRUE)
+  print(dim(d))
+  return(d)
+}
+
+r0_distances <- load_data("r0_np-cc_repeat_first_aa-seq.tsv.gz")
+r1_distances <- load_data("r1_np-cc_first_aa-seq.tsv.gz")
+r5_distances <- load_data("r5_np-cc_first_aa-seq.tsv.gz")
+
+scale_max <- max(c(max(r0_distances), max(r1_distances), max(r5_distances)))
+breaks <- seq(0, scale_max, length.out=20)
+cols <- viridis::plasma(20)
+
+
+plots <- purrr::map(list(r0_distances, r1_distances, r5_distances), 
+  ~ ggplotify::as.ggplot(pheatmap::pheatmap(., breaks=breaks, color=cols, cluster_cols = F, cluster_rows = F))
+)
+patchwork::wrap_plots(plots)
+
+```
+
+This distance matrix is sorted by count.  However, let's also try doing clustering on each heatmap.
+
+```{r}
+
+plots <- purrr::map(list(r0_distances, r1_distances, r5_distances), 
+  ~ ggplotify::as.ggplot(pheatmap::pheatmap(., breaks=breaks, color=cols, cluster_cols = T, cluster_rows = T))
+)
+
+patchwork::wrap_plots(plots)
+```
+
+
+
