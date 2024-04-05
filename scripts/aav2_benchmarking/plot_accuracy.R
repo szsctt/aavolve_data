@@ -158,7 +158,7 @@ vars <- dplyr::left_join(rids, vars, by = "query_name") %>%
 p4 <- vars %>% 
     dplyr::select(repeats, del_per_base, ins_per_base, sub_per_base) %>%
     tidyr::pivot_longer(cols = c(del_per_base, ins_per_base, sub_per_base), names_to = "error_type", values_to = "rate") %>%
-    dplyr::mutate(repeats = forcats::fct_reorder(repeats, as.numeric(repeats))) %>%
+dplyr::mutate(repeats = forcats::fct_reorder(repeats, as.numeric(repeats))) %>%
     dplyr::mutate(error_type = dplyr::case_match(error_type,
         "del_per_base" ~ "Deletions",
         "ins_per_base" ~ "Insertions",
@@ -171,7 +171,8 @@ p4 <- vars %>%
         y = "Per-base error rate"
     ) +
     # change legend to "Error type"
-    ggplot2::scale_color_discrete(name = "Error type") 
+    ggplot2::scale_color_discrete(name = "Error type") +
+    ggplot2::theme(legend.position = "bottom") 
 
 # plot per-base accuracy
 p4a <- vars %>% 
@@ -185,8 +186,8 @@ p4a <- vars %>%
 
 
 p <- p1a / p4a / p4
-ggplot2::ggsave(file.path(out_dir, "error-rates.png"), dpi=300)
-ggplot2::ggsave(file.path(out_dir, "error-rates.pdf"))
+ggplot2::ggsave(file.path(out_dir, "error-rates.png"), dpi=300, height = 7, width=10)
+ggplot2::ggsave(file.path(out_dir, "error-rates.pdf"), height=7, width = 10)
 
 # plot fraction of reads with no errors
 p5 <- vars %>% 
