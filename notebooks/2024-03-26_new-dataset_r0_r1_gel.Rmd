@@ -2,8 +2,9 @@
 title: "New dataset 03/01/2024"
 date: "`r Sys.Date()`"
 output: 
-  html_notebook:
+  html_document:
     code_folding: hide
+    keep_md: true
 ---
 
 ```{r setup, include = FALSE}
@@ -246,15 +247,31 @@ n_reads <- aa %>%
   filter(n > 1) %>%
   nrow()
 
-p1 <- aa %>%
-  filter(stage %in% c("r0", "r1")) %>%
-  group_by(sequence) %>%
-  filter(n() > 1) %>% 
-  ggplot(aes(x = stage, y = frac, group=sequence)) +
+# https://stackoverflow.com/questions/38722202/how-do-i-change-the-number-of-decimal-places-on-axis-labels-in-ggplot2
+scaleFun <- function(x) sprintf("%.2f", x)
+
+aa_wide <- aa %>% 
+  group_by(stage) %>%
+  mutate(frac = count / sum(count)) %>%
+  ungroup() %>%
+  select(-count) %>%
+  pivot_wider(names_from = stage, values_from = frac) %>%
+  mutate(r1_div_r0 = r1/r0) %>% 
+  mutate(r5_div_r0 = r5/r0) 
+
+p1 <- aa_wide %>%
+  filter(!is.na(r1_div_r0)) %>%
+  slice_sample(n=5000) %>%
+  select(sequence, r0, r1, r1_div_r0) %>%
+  pivot_longer(r0:r1, names_to = "stage", values_to = "frac") %>%  
+  ggplot(aes(x = stage, y = frac, group=sequence, color = r1_div_r0)) +
   geom_line(alpha = 0.05) +
   geom_point() +
   scale_y_log10() +
-  labs(x = "Selection round", y = "Fraction of reads", title=glue::glue("Round 0 -> 1 ({n_reads} sequences)"))
+  scale_color_viridis_c(trans="log", labels = scaleFun) +
+  labs(x = "Selection round", y = "Fraction of reads", 
+    title=glue::glue("Round 0 -> 1 ({n_reads} sequences)"),
+    color="Fold change")
 
 p1
 ```
@@ -270,15 +287,18 @@ n_reads <- aa %>%
   nrow()
 
 
-p2 <- aa %>% 
-  filter(stage %in% c("r0", "r5")) %>%
-  group_by(sequence) %>%
-  filter(n() > 1) %>% 
-  ggplot(aes(x = stage, y = frac, group=sequence)) +
-  geom_line(alpha = 0.2) +
+p2 <- aa_wide %>%
+  filter(!is.na(r5_div_r0)) %>%
+  slice_sample(n=5000) %>%
+  select(sequence, r0, r5, r5_div_r0) %>%
+  pivot_longer(r0:r5, names_to = "stage", values_to = "frac") %>%  
+  ggplot(aes(x = stage, y = frac, group=sequence, color = r5_div_r0)) +
+  geom_line(alpha = 0.05) +
   geom_point() +
   scale_y_log10() +
-  labs(x = "Selection round", y = "Fraction of reads", title = glue::glue("Round 0 -> 5 ({n_reads} sequences)"))
+  scale_color_viridis_c(trans="log", labels=scaleFun) +
+  labs(x = "Selection round", y = "Fraction of reads", 
+  title=glue::glue("Round 0 -> 1 ({n_reads} sequences)"), color="Fold change")
 
 p2
 ```
