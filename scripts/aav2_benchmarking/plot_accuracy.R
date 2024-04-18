@@ -10,6 +10,8 @@ aav2_length <- 2208
 out_dir <- here::here("out/aav2_benchmarking/plots")
 dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
 
+ggplot2::theme_set(ggplot2::theme_minimal(base_size = 9))
+
 #### average error rates calculated with python script ####
 
 # read in data with average error rates
@@ -25,7 +27,6 @@ p1 <- errors %>%
         x = "Number of repeats",
         y = "Fraction of reads"
     )
-
 
 # same plot but with repeat nubmer as factor
 p1a <- errors %>% 
@@ -267,5 +268,5 @@ p <- igv + p1b + p6 + p7 +
     plot_annotation(tag_levels = "A") +
     plot_layout(design = layout)
 
-ggplot2::ggsave(file.path(out_dir, "median_error_rates_with_igv.png"), dpi=300, width=10, height=6)
-ggplot2::ggsave(file.path(out_dir, "median_error_rates_with_igv.pdf"), width=10, height=6)
+ggplot2::ggsave(file.path(out_dir, "median_error_rates_with_igv.png"), dpi=300, units="mm", width=86.5, height=80, scale=1.9)
+ggplot2::ggsave(file.path(out_dir, "median_error_rates_with_igv.pdf"), units="mm", width=86.5, height=80, scale=1.9)
