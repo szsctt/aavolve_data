@@ -69,6 +69,7 @@ load_library <- function(base, n_reads=5000) {
     legend <- cowplot::get_legend(p1)
     p1 <- p1 + ggplot2::theme(legend.position="none") 
 
+
     # counts
     p2 <- assigned %>% 
         ggplot2::ggplot(ggplot2::aes(x=count, y=id, group=1)) +
@@ -227,5 +228,42 @@ row4 <- cowplot::plot_grid(p1, p2, p3, nrow=1, rel_widths = c(1, 1, 1), labels =
 p <- cowplot::plot_grid(row1, row2, row3, row4,
                         ncol=1, rel_heights = c(1, 1, 0.7, 1), labels = c("A", "", "", ""))
 
-ggplot2::ggsave(file.path(out_dir, "selection_rounds.pdf"), units = "mm", width = 178, scale=1.5)
-ggplot2::ggsave(file.path(out_dir, "selection_rounds.png"), units = "mm", width = 178, dpi=300, scale=1.5)
+ggplot2::ggsave(file.path(out_dir, "selection_rounds.pdf"), plot = p, units = "mm", width = 178, scale=1.5)
+ggplot2::ggsave(file.path(out_dir, "selection_rounds.png"), plot = p,  units = "mm", width = 178, dpi=300, scale=1.5)
+
+# save individual figures
+
+ggplot2::ggsave(file.path(out_dir, "selection_rounds_r0.pdf"), plot = r0_vis$p, units = "mm", width = 55, height = 55, scale=1.5)
+ggplot2::ggsave(file.path(out_dir, "selection_rounds_r0.png"), plot = r0_vis$p, units = "mm", width = 55, height = 55, scale=1.5, dpi = 300)
+
+ggplot2::ggsave(file.path(out_dir, "selection_rounds_r1.pdf"), plot = r1_vis$p, units = "mm", width = 55, height = 55, scale=1.5)
+ggplot2::ggsave(file.path(out_dir, "selection_rounds_r1.png"), plot = r1_vis$p, units = "mm", width = 55, height = 55, scale=1.5, dpi = 300)
+
+ggplot2::ggsave(file.path(out_dir, "selection_rounds_r5.pdf"), plot = r5_vis$p, units = "mm", width = 55, height = 55, scale=1.5)
+ggplot2::ggsave(file.path(out_dir, "selection_rounds_r5.png"), plot = r5_vis$p, units = "mm", width = 55, height = 55, scale=1.5, dpi = 300)
+
+ggplot2::ggsave(file.path(out_dir, "selection_rounds_parents_legend.pdf"), plot = r5_vis$lgd, units = "mm", width = 55, height = 55, scale=1.5)
+ggplot2::ggsave(file.path(out_dir, "selection_rounds_parents_legend.png"), plot = r5_vis$lgd, units = "mm", width = 55, height = 55, scale=1.5, dpi = 300)
+
+ggplot2::ggsave(file.path(out_dir, "selection_rounds_r0_heatmap.pdf"), plot = plots[[1]], units = "mm", width = 50, height = 55, scale=1.5)
+ggplot2::ggsave(file.path(out_dir, "selection_rounds_r0_heatmap.png"), plot = plots[[1]], units = "mm", width = 55, height = 55, scale=1.5, dpi = 300)
+
+ggplot2::ggsave(file.path(out_dir, "selection_rounds_r1_heatmap.pdf"), plot = plots[[2]], units = "mm", width = 50, height = 55, scale=1.5)
+ggplot2::ggsave(file.path(out_dir, "selection_rounds_r1_heatmap.png"), plot = plots[[2]], units = "mm", width = 55, height = 55, scale=1.5, dpi = 300)
+
+ggplot2::ggsave(file.path(out_dir, "selection_rounds_r5_heatmap_legend.pdf"), plot = plots[[3]], units = "mm", width = 55, height = 55, scale=1.5)
+ggplot2::ggsave(file.path(out_dir, "selection_rounds_r5_heatmap_legend.png"), plot = plots[[3]], units = "mm", width = 55, height = 55, scale=1.5, dpi = 300)
+
+# r5 heatmap without legend
+r5_heatmap <- make_heatmap(r5_distances, FALSE)
+ggplot2::ggsave(file.path(out_dir, "selection_rounds_r5_heatmap.pdf"), plot = r5_heatmap , units = "mm", width = 55, height = 55, scale=1.5)
+ggplot2::ggsave(file.path(out_dir, "selection_rounds_r5_heatmap.png"), plot = r5_heatmap , units = "mm", width = 55, height = 55, scale=1.5, dpi = 300)
+
+ggplot2::ggsave(file.path(out_dir, "selection_rounds_ecdf.pdf"), plot = p1, units = "mm", width = 55, height = 55, scale=1.5)
+ggplot2::ggsave(file.path(out_dir, "selection_rounds_ecdf.png"), plot = p1, units = "mm", width = 55, height = 55, scale=1.5, dpi = 300)
+
+ggplot2::ggsave(file.path(out_dir, "selection_rounds_r0_to_r1_frac.pdf"), plot = p2, units = "mm", width = 55, height = 55, scale=1.5)
+ggplot2::ggsave(file.path(out_dir, "selection_rounds_r0_to_r1_frac.png"), plot = p2, units = "mm", width = 55, height = 55, scale=1.5, dpi = 300)
+
+ggplot2::ggsave(file.path(out_dir, "selection_rounds_r0_to_r5_frac.pdf"), plot = p3, units = "mm", width = 55, height = 55, scale=1.5)
+ggplot2::ggsave(file.path(out_dir, "selection_rounds_r0_to_r5_frac.png"), plot = p3, units = "mm", width = 55, height = 55, scale=1.5, dpi = 300)
