@@ -2,6 +2,7 @@
 
 library(tidyverse)
 library(cowplot)
+here::i_am("scripts/sh2389_selection/plots.R")
 
 out_dir <- here::here("out/sh2389/plots")
 dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
