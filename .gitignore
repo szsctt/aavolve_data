@@ -3,3 +3,12 @@ out
 notebooks/*html
 notebooks/*png
 *.Rproj
+.Rproj.user
+.cache
+.snakemake
+data
+out_without_grouping
+*messages
+notebooks/*_files
+notebooks/*md
+notebooks/*html
