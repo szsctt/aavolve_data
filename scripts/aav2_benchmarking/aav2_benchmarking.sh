@@ -109,7 +109,7 @@ singularity exec \
 
 
 # combine error rates for each number of repeats
-rm $VAR/all.rates.tsv
+rm -r $VAR/all.rates.tsv
 awk 'NR==1 || FNR>1 ' $VAR/*.rates.tsv > $VAR/all.rates.tsv
 
 
