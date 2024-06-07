@@ -15,6 +15,8 @@ SAMIMG="docker://quay.io/biocontainers/samtools:1.19.2--h50ea8bc_1"
 SAMSIF="${SINGDIR}/samtools.sif"
 IGVIMG="docker://quay.io/biocontainers/igv:2.17.3--hdfd78af_0"
 IGVSIF="${SINGDIR}/igv.sif"
+PYIMG="docker://szsctt/lr_py:latest"
+PYSIF="${SINGDIR}/lr_py.sif"
 
 # pull containers
 if [ ! -e $SAMSIF ]; then
@@ -23,6 +25,10 @@ fi
 
 if [ ! -e $IGVSIF ]; then
     singularity pull $IGVSIF $IGVIMG
+fi
+
+if [ ! -e $PYSIF ]; then
+    singularity pull $PYSIF $PYIMG
 fi
 
 # filter alignments for reads that appear in pivoted data only
@@ -50,9 +56,16 @@ for file in "${FILES[@]}"; do
 done
 
 # create IGV image
+mkdir -p ${OUTDIR}/igv
 singularity exec \
     $IGVSIF \
     igv -b scripts/sh2389_selection/FRG_selection_igv.bat
+
+# caculate maximum possible library size
+singularity exec $PYSIF \
+    python scripts/sh2389_selection/calc_theoretical_lib_size.py \
+      --parents out/variants/parents/aav2389.tsv.gz \
+      --group-vars --group-dist 1
 
 # make plots
 singularity exec $RSIF \
