@@ -70,3 +70,6 @@ singularity exec $PYSIF \
 # make plots
 singularity exec $RSIF \
     Rscript scripts/sh2389_selection/plots.R
+
+singularity exec $RSIF \
+    Rscript scripts/sh2389_selection/comp_pacbio.R
