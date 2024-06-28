@@ -232,3 +232,18 @@ rc_agg %>%
   mutate(pivoted_div_raw = pivoted / raw) %>%
   write_tsv(file.path(out_dir, "read_counts_agg_pivoted.tsv"))
 
+# make table with np-cc results for r0, r1 and r5 for supplementary table
+rc_agg %>% 
+  filter(seq_type == "np-cc") %>%
+  filter(sample_stage %in% c("r0", "r1", "r5")) %>%
+  select(sample_stage, stage, count) %>%
+  pivot_wider(names_from = stage, values_from = count) %>%
+  rename(all_of(c(`Selection round`="sample_stage", 
+                  Raw='raw', 
+                  Consensus='consensus',
+                  `Filtered consensus`='filtered consensus',
+                  `Filtered by reference coverage`='variant',
+                  `Reads with identified parents`='pivoted',
+                  `Distinct amino acids`='distinct aa',
+                  `Distinct nucleotides`='distinct nt'))) %>%
+  write_tsv(file.path(out_dir, "supp_read_counts_np-cc.tsv"))

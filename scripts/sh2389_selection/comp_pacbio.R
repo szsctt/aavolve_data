@@ -44,9 +44,41 @@ rc <- read_tsv(list.files(here::here("out", "qc"), pattern = "*read-counts.tsv",
 # for pacbio data, input is consensus, not raw
 rc <- rc %>%
     mutate(stage = case_when(
-        sample == "r5_pb" & stage == "raw" ~ "consensus",
+        sample == "r5_pb" & stage == "raw" ~ "filtered consensus",
         TRUE ~ stage
     )) 
+
+# manually input number of ZMWs for PacBio data
+rc <- rc %>%
+    add_row(stage = "raw", sample = "r5_pb", count = 113581) 
+
+relabel <- function(x) {
+    return(
+        case_when(
+            x == "raw" ~ "Raw",
+            x == "consensus" ~ "Consensus",
+            x == "filtered consensus" ~ "Filtered consensus",
+            x == "variant" ~ "Filtered by reference coverage",
+            x == "pivoted" ~ "Reads with identified parents",
+            x =="distinct aa" ~ "Distinct amino acids",
+            x== "distinct nt" ~ "Distinct nucleotides")
+    )
+}
+
+# plot data for each sequencing type
+rc %>%
+    select(sample, stage, count) %>%
+    mutate(stage = forcats::fct(stage, c("raw", "consensus", "filtered consensus", "variant", "pivoted", "distinct aa", "distinct nt"))) %>%
+    mutate(stage = fct_relabel(stage, relabel)) %>%
+    group_by(sample) %>%
+    # divide each count by the raw count for that sample
+    mutate(fraction = count / count[stage == "Raw"]) %>%
+    filter(!stage %in% c("Distinct amino acids", "Distinct nucleotides")) %>%
+    ggplot(aes(x = stage, y = fraction, color = sample, group = sample)) +
+    geom_point() +
+    geom_line() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    labs(x = "Processing stage", y = "Fraction of raw reads", color = "Sequencing type") 
 
 # present data as pivoted dataframe
 rc %>% 
@@ -54,8 +86,30 @@ rc %>%
   mutate(stage = factor(stage, levels = c("raw", "consensus", "filtered consensus", "variant", "pivoted", "distinct aa", "distinct nt"))) %>%
   arrange(stage) %>%
   pivot_wider(names_from = stage, values_from = count) %>%
-    write_tsv(file.path(out_dir, "read_counts.tsv"))
+  mutate(sample = case_when(
+    sample == "r5_np-cc" ~ "Nanopore R2C2",
+    sample == "r5_pb" ~ "PacBio",
+    sample == "r5_sanger" ~ "Sanger",
+    sample == "r5_np" ~ "Nanopore"
+  )) %>%
+  rename(all_of(c(`Sequencing technology` = "sample",
+                  Raw='raw', 
+                  Consensus='consensus',
+                  `Filtered consensus`='filtered consensus',
+                  `Filtered by reference coverage`='variant',
+                  `Reads with identified parents`='pivoted',
+                  `Distinct amino acids`='distinct aa',
+                  `Distinct nucleotides`='distinct nt'))) %>% 
+    write_tsv(file.path(out_dir, "supp_tech-read-counts.tsv"))
 
+# do same but percentages of raw counts
+rc %>% 
+  select(sample, stage, count) %>% 
+  mutate(stage = factor(stage, levels = c("raw", "consensus", "filtered consensus", "variant", "pivoted", "distinct aa", "distinct nt"))) %>%
+  arrange(stage) %>%
+  pivot_wider(names_from = stage, values_from = count) %>%
+  mutate(across(raw:`distinct nt`, ~ .x / raw * 100)) %>%
+    write_tsv(file.path(out_dir, "read_percentages.tsv"))
 
 # load sequence counts at amino acid level
 read_counts <- function(base) {
@@ -140,3 +194,4 @@ ggsave(file.path(out_dir, "ranked_sequences_pb_vs_np-cc.pdf"), p4, width = 50, h
 
 
 print(glue::glue("Correlation coeffecient between rank in PacBio and rank in R2C2: {cor(c_pb_np$R2C2, c_pb_np$PacBio)}"))
+cor(c_pb_np$R2C2, c_pb_np$PacBio)
