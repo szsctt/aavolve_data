@@ -56,7 +56,6 @@ errors <- errors %>%
         del_per_read = del / reads,
         sub_per_read = sub / reads,
         errors_per_read = total / reads,
-        accuracy_per_read = 1 - errors_per_read,
         ins_per_base = ins / (reads * aav2_length),
         del_per_base = del / (reads * aav2_length),
         sub_per_base = sub / (reads * aav2_length),
@@ -142,7 +141,7 @@ vars <- vars %>%
         accuracy_per_base = 1 - (dplyr::n() / aav2_length)
     )
 
-# read in list of read IDS so we can fill in any reads without any variants
+# read in list of read IDs so we can fill in any reads without any variants
 files <- list.files(here::here("out/aav2_benchmarking/consensus_var"), full.names = TRUE, pattern="*reads.tsv")
 rids <- readr::read_tsv(files, col_names = "query_name") 
 
@@ -253,7 +252,7 @@ ggplot2::ggsave(file.path(out_dir, "median_error_rates.pdf"))
 
 # load image from igv
 igv <- cowplot::ggdraw() +
-    cowplot::draw_image(here::here("out/aav2_benchmarking/num_repeats_igv/aav2_np-cc_repeats.png"), width = 1, height = 1)
+    cowplot::draw_image(here::here("out/aav2_benchmarking/num_repeats_igv/np-aav2-cc_num_repeats.png"), width = 1, height = 1)
 
 
 
@@ -270,3 +269,28 @@ p <- igv + p1b + p6 + p7 +
 
 ggplot2::ggsave(file.path(out_dir, "median_error_rates_with_igv.png"), dpi=300, units="mm", width=86.5, height=80, scale=1.9)
 ggplot2::ggsave(file.path(out_dir, "median_error_rates_with_igv.pdf"), units="mm", width=86.5, height=80, scale=1.9)
+
+# write error rates to file
+errors %>%
+   dplyr:: arrange(group) %>%
+   readr::write_tsv(file.path(out_dir, "mean_error_rates.tsv"))
+
+vars %>%
+    readr::write_tsv(file.path(out_dir, "per_read_error_rates.tsv"))
+
+vars %>% 
+    dplyr::group_by(group) %>%
+    dplyr::summarise(
+        reads = dplyr::n(),
+        median_ins = median(ins),
+        median_del = median(del),
+        median_sub = median(sub),
+        median_total_errors = median(total),
+        median_ins_per_base = median(ins_per_base),
+        median_del_per_base = median(del_per_base),
+        median_sub_per_base = median(sub_per_base),
+        median_accuracy_per_base = median(accuracy_per_base)
+    ) %>%
+    dplyr::ungroup() %>%
+    dplyr::mutate(read_fraction = reads / sum(reads)) %>%
+    readr::write_tsv(file.path(out_dir, "median_error_rates.tsv"))

@@ -1,0 +1,25 @@
+name: torch2
+channels:
+- conda-forge
+- nvidia
+- pytorch
+dependencies:
+- jupyter=1.0
+- lightning=2.2
+- matplotlib=3.8.
+- numpy=1.26
+- pandas=2.2
+- plotnine=0.13
+- python=3.11
+- pytorch=2.3
+- pytorch-cuda=11.8
+- pytorch-lightning=2.2
+- scipy=1.13.
+- seaborn=0.13
+- torchaudio=2.3
+- torchmetrics=1.4
+- torchvision=0.18
+- pip
+- pip:
+  - wandb
+

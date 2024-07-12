@@ -6,3 +6,6 @@ set -euo pipefail
 
 # run analysis of AAV2 data
 bash scripts/aav2_benchmarking/aav2_benchmarking.sh
+
+
+bash scripts/sh2389_selection/FRG_selection.sh
