@@ -8,7 +8,7 @@ from lightning.pytorch.loggers import WandbLogger
 import esm
 
 # import classes
-from common_classes import MBEDataset, MBEDataModule, LSTM, LitMBE
+from common_classes import MBEDataset, MBEDataModule, LitMBE
 
 # log into to wandb to log results
 import wandb
@@ -57,9 +57,7 @@ df_unique = (df
 thresh = 1
 df_unique = df_unique.assign(set = lambda x: ['high' if w >= thresh else 'low' for w in x['weight']])
 
-# Keep only the sequences labeled as high (the one that have a count geater than one)
 df_unique = df_unique.loc[df_unique['set'] == 'high']
-print('size of df_unique: ', df_unique.shape)
 
 df_test_eval = df_unique.sample(frac=1).head(100)
 df_test = df_test_eval.head(50)
@@ -89,23 +87,17 @@ def esm_embedding(seqs, max_len):
     labels = []
     sequence_representations = []
     while next <= len(data) and next != prev:
-        # print("Prev: ", prev, " and Next: ", next)
+
         batch_labels, batch_seq, batch_tokens = batch_converter(data[prev:next])
         labels = labels + batch_labels
-        # print("Finished the batch items")
-        # batch_lens is just an array with the length of all of the sequences
-        # and alphabet.padding_idx is jus thte index of the token '<pad>' in the alpahabet token list
         batch_lens = (batch_tokens != alphabet.padding_idx).sum(1)
 
         with torch.no_grad():
             results = model(batch_tokens, repr_layers=[33], return_contacts=True)
         token_representations = results["representations"][33]
-        # print("Finished no grad")
-        # Generate per-sequence representations via averaging
-        # # NOTE: token 0 is always a beginning-of-sequence token, so the first residue is token 1.
-        # sequence_representations = []
+        
         for i, tokens_len in enumerate(batch_lens):
-            sequence_representations.append((token_representations[i, 1 : tokens_len - 1].mean(1)).numpy())
+            sequence_representations.append((token_representations[i, 1 : tokens_len - 1]).numpy())
         # print('Finished appending sequence representations')
         prev = next
         if next + batch_size > len(data):
@@ -126,28 +118,29 @@ def esm_embedding(seqs, max_len):
 
 
 def encode(df, max_len):
-    # Extract the index (or this case the round number) and the amino acid sequence of each entry in the data frame
+    print("are we encoding?")
     index_and_sequence = [(round_val, ((df.loc[round_val, 'sequence'])[:-1] + '<unk>'*(max_len - len(df.loc[round_val, 'sequence'])) + '<eos>')) for round_val in df.index.tolist()]
-    indexes, encoded_numpy_arrr= esm_embedding(index_and_sequence, max_len)
+    indexes, encoded_numpy_arr= esm_embedding(index_and_sequence, max_len)
     
     df_encoded = pd.DataFrame({
         'round': indexes,
-        'encoded': encoded_numpy_arrr
+        'encoded': encoded_numpy_arr
     })
 
     df_encoded.set_index('round', inplace=True)
     df_encoded.index = df_encoded.index.astype('int64')
 
     out = df
+    print(type(df_encoded))
     out.loc[:,'encoded'] = df_encoded
-    print(type(out))
+    
     return out
 
 
 max_seq_length = df_unique['sequence'].str.len().max() + 10
 # rerun_encoding = True
 
-if not os.path.exists(os.path.join(procdir, 'train_ESM_embedding.parquet')) or rerun_encoding:
+if not os.path.exists(os.path.join(procdir, 'train_ESM_embedding_2d.parquet')) or rerun_encoding:
     print("Saving to files")
     
     df_train = encode(df_train, max_seq_length)
@@ -157,14 +150,14 @@ if not os.path.exists(os.path.join(procdir, 'train_ESM_embedding.parquet')) or r
     df_test = encode(df_test, max_seq_length)
     print("Saved Test")
     # save data
-    df_train.to_parquet(os.path.join(procdir, 'train_ESM_embedding.parquet'))
-    df_eval.to_parquet(os.path.join(procdir, 'eval_ESM_embedding.parquet'))
-    df_test.to_parquet(os.path.join(procdir, 'test_ESM_embedding.parquet'))
+    df_train.to_parquet(os.path.join(procdir, 'train_ESM_embedding_2d.parquet'))
+    df_eval.to_parquet(os.path.join(procdir, 'train_ESM_embedding_2d.parquet'))
+    df_test.to_parquet(os.path.join(procdir, 'train_ESM_embedding_2d.parquet'))
 
 else:
-    df_train = pd.read_parquet(os.path.join(procdir, 'train_ESM_embedding.parquet')) # too large
-    df_eval = pd.read_parquet(os.path.join(procdir, 'eval_ESM_embedding.parquet'))
-    df_test = pd.read_parquet(os.path.join(procdir, 'test_ESM_embedding.parquet'))
+    df_train = pd.read_parquet(os.path.join(procdir, 'train_ESM_embedding_2d.parquet')) # too large
+    df_eval = pd.read_parquet(os.path.join(procdir, 'train_ESM_embedding_2d.parquet'))
+    df_test = pd.read_parquet(os.path.join(procdir, 'train_ESM_embedding_2d.parquet'))
     # max_seq_length would not be defined if the dfs were already loaded in an external file
 
 
@@ -193,7 +186,7 @@ wandb_logger.experiment.config.update({
     "n_units": 128,
     "batch_size": BATCH_SIZE,
     "max_seq_length": max_seq_length,
-    "arch": "LSTM",
+    "arch": "CNN",
     "enc": "ESM2",
     "loss": "BCEWithLogitsLoss",
     "opt": "Adam",
