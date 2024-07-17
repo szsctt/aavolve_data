@@ -87,26 +87,23 @@ def esm_embedding(seqs, max_len):
     next = batch_size if batch_size < len(data) else len(data)
 
     labels = []
+    # In this case, sequence represenation is a 3D array. a list of 2D array represeations of sequences
     sequence_representations = []
     while next <= len(data) and next != prev:
         # print("Prev: ", prev, " and Next: ", next)
         batch_labels, batch_seq, batch_tokens = batch_converter(data[prev:next])
         labels = labels + batch_labels
         # print("Finished the batch items")
-        # batch_lens is just an array with the length of all of the sequences
-        # and alphabet.padding_idx is jus thte index of the token '<pad>' in the alpahabet token list
         batch_lens = (batch_tokens != alphabet.padding_idx).sum(1)
 
         with torch.no_grad():
             results = model(batch_tokens, repr_layers=[33], return_contacts=True)
         token_representations = results["representations"][33]
-        # print("Finished no grad")
-        # Generate per-sequence representations via averaging
-        # # NOTE: token 0 is always a beginning-of-sequence token, so the first residue is token 1.
-        # sequence_representations = []
+        # Don't average the sequence represenations over any dimension so that you 
+        # are left with a 2D array representation of the data
         for i, tokens_len in enumerate(batch_lens):
-            sequence_representations.append((token_representations[i, 1 : tokens_len - 1].mean(1)).numpy())
-        # print('Finished appending sequence representations')
+            sequence_representations.append((token_representations[i, 1 : tokens_len - 1]).numpy())
+        print('Finished appending sequence representations')
         prev = next
         if next + batch_size > len(data):
             next = len(data)
@@ -147,7 +144,7 @@ def encode(df, max_len):
 max_seq_length = df_unique['sequence'].str.len().max() + 10
 # rerun_encoding = True
 
-if not os.path.exists(os.path.join(procdir, 'train_ESM_embedding.parquet')) or rerun_encoding:
+if not os.path.exists(os.path.join(procdir, 'train_ESM_embedding_2d.parquet')) or rerun_encoding:
     print("Saving to files")
     
     df_train = encode(df_train, max_seq_length)
@@ -157,14 +154,14 @@ if not os.path.exists(os.path.join(procdir, 'train_ESM_embedding.parquet')) or r
     df_test = encode(df_test, max_seq_length)
     print("Saved Test")
     # save data
-    df_train.to_parquet(os.path.join(procdir, 'train_ESM_embedding.parquet'))
-    df_eval.to_parquet(os.path.join(procdir, 'eval_ESM_embedding.parquet'))
-    df_test.to_parquet(os.path.join(procdir, 'test_ESM_embedding.parquet'))
+    df_train.to_parquet(os.path.join(procdir, 'train_ESM_embedding_2d.parquet'))
+    df_eval.to_parquet(os.path.join(procdir, 'train_ESM_embedding_2d.parquet'))
+    df_test.to_parquet(os.path.join(procdir, 'train_ESM_embedding_2d.parquet'))
 
 else:
-    df_train = pd.read_parquet(os.path.join(procdir, 'train_ESM_embedding.parquet')) # too large
-    df_eval = pd.read_parquet(os.path.join(procdir, 'eval_ESM_embedding.parquet'))
-    df_test = pd.read_parquet(os.path.join(procdir, 'test_ESM_embedding.parquet'))
+    df_train = pd.read_parquet(os.path.join(procdir, 'train_ESM_embedding_2d.parquet')) # too large
+    df_eval = pd.read_parquet(os.path.join(procdir, 'train_ESM_embedding_2d.parquet'))
+    df_test = pd.read_parquet(os.path.join(procdir, 'train_ESM_embedding_2d.parquet'))
     # max_seq_length would not be defined if the dfs were already loaded in an external file
 
 
@@ -173,7 +170,7 @@ ds = MBEDataset(df_eval)
 
 # test out datamodule class - takes a while to load pickled data
 dm = MBEDataModule(procdir, batch_size=BATCH_SIZE)
-dm.setup(encode = 'ESM_embedding.parquet')
+dm.setup(encode = 'ESM_embedding_2d.parquet')
 # test = next(iter(dm.train_dataloader()))
 # test
 

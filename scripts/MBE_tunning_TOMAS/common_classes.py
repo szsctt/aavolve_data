@@ -136,7 +136,6 @@ def linear_layers(input_size, n_units, num_layers = 1):
     
     return nn.Sequential(*layers)
 
-# TODO: generalize the number of layers
 class MBEFeedForward(MBELogisticRegression):
 
     def __init__(self, input_size, pos_weight=None, n_units=128, num_layers = 1):
@@ -164,6 +163,58 @@ class LSTM(nn.Module):
     def predict(self,x):
         p = self.forward(x)
         return p/(1-p) / self.pos_weight
+
+
+
+class CNN(nn.Module):
+    """
+    Class for logistic regression. 
+    Returns logits by default, or probabilities if probs=True.
+    """
+
+    def __init__(self, input_size, pos_weight=None, n_units=128, num_layers = 1):
+        super().__init__()
+        self.linear = nn.Linear(input_size, 1, dtype = torch.float64)
+        self.pos_weight = 1 if pos_weight is None else pos_weight
+
+        self.n_units = n_units
+        self.pos_weight = pos_weight
+        self.linear = self.convolutional_layers(input_size, n_units, num_layers)
+
+    def forward(self, x, probs=False):
+        """
+        Return logits or probabilities
+        
+        """
+
+        logits = self.linear(x)
+        if probs:
+            return torch.sigmoid(logits)
+        else:
+            return logits
+
+    def predict(self, x):
+        """
+        Return density ratio, an estimate of log enrichment
+        """
+        
+        # get probability for positive class
+        p = self.forward(x, probs=True)
+
+        # density ratio is p/(1-p), adjusted for class imbalance
+        return p/(1-p) / self.pos_weight
+    
+    # The number of layers depend on the size of the data
+    def conv(in_size, out_size, kernel_size = 3, stride=2, act = True):
+        layers = []
+        layers.append(nn.Conv2d(in_size, out_size, stride=stride, kernel_size = kernel_size, padding = kernel_size//2))
+
+        
+
+
+        if act: layers.append(nn.ReLU)
+
+        return layers
 
 class LitMBE(L.LightningModule):
 

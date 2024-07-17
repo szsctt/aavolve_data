@@ -8,7 +8,7 @@ from lightning.pytorch.loggers import WandbLogger
 import esm
 
 # import classes
-from common_classes import MBEDataset, MBEDataModule, LitMBE
+from common_classes import MBEDataset, MBEDataModule,LSTM, LitMBE
 
 # log into to wandb to log results
 import wandb
@@ -166,12 +166,12 @@ ds = MBEDataset(df_eval)
 
 # test out datamodule class - takes a while to load pickled data
 dm = MBEDataModule(procdir, batch_size=BATCH_SIZE)
-dm.setup(encode = 'ESM_embedding.parquet')
+dm.setup(encode = 'ESM_embedding_2d.parquet')
 # test = next(iter(dm.train_dataloader()))
 # test
 
 
-
+# NOTE: should a CNN be using an LSTM
 model = LSTM(len(ds[0][0]),3, 1, ds.get_weights())
 # model(test[0])[:5]
 
