@@ -158,6 +158,7 @@ class LSTM(nn.Module):
         """
         This will always return the probabilites
         """
+        x, _ = self.lstm(x)
         return torch.sigmoid(self.fc(x))
     
     def predict(self,x):
