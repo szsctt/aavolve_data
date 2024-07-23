@@ -23,6 +23,7 @@ wandb.login()
 datadir = './out/corrected/counts'
 procdir = './out/modelling/processed'
 BATCH_SIZE=64
+NUM_LAYERS = 4
 
 
 os.makedirs(procdir, exist_ok=True)
@@ -181,13 +182,13 @@ dm.setup(encode = 'ESM_embedding.parquet')
 # test
 
 
-model = MBEFeedForward(len(ds[0][0]), pos_weight=ds.get_weights())
+model = MBEFeedForward(len(ds[0][0]), pos_weight=ds.get_weights(), num_layers=NUM_LAYERS)
 
 # instantiate lightning model
 lit_model = LitMBE(model, pos_weight=ds.get_weights())
 
 # use weights and biases logger
-wandb_logger = WandbLogger(project='mbe', name = "feedforward ESM2")
+wandb_logger = WandbLogger(project='mbe', name = f"feedforward ESM2 w {NUM_LAYERS}")
 wandb_logger.experiment.config.update({
     "lr": 0.001,
     "pos_weight": ds.get_weights(),
@@ -199,7 +200,7 @@ wandb_logger.experiment.config.update({
     "loss": "BCEWithLogitsLoss",
     "opt": "Adam",
     "weight_decay": 0.00005,
-    "number_layers": 1
+    "number_layers": NUM_LAYERS
 })
 
 # train model

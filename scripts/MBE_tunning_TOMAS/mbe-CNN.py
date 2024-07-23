@@ -8,7 +8,7 @@ from lightning.pytorch.loggers import WandbLogger
 import esm
 
 # import classes
-from common_classes import MBEDataset, MBEDataModule,LSTM, LitMBE
+from common_classes import MBEDataset, MBEDataModule,CNN, LitMBE
 
 # log into to wandb to log results
 import wandb
@@ -22,6 +22,17 @@ datadir = './out/corrected/counts'
 procdir = './out/modelling/processed'
 BATCH_SIZE=64
 
+# Parameters:
+FIRST_OUT_CH_SIZE = 100
+NUMBER_OF_LAYERS = 2
+KS = 15 # KERNEL SIZE
+STRIDE = 3
+INC_OF_OUT_LAYERS = 2
+P_KS = 2 # Pooling kernel size
+P_S =  2 # Pooling stride
+WEIGHT_DECAY = 1e-5
+
+# (FIRST_OUT_CH_SIZE, STRIDE, 2, 2)
 
 os.makedirs(procdir, exist_ok=True)
 np.random.seed(12345)
@@ -66,11 +77,13 @@ df_test = df_test_eval.head(50)
 df_eval = df_test_eval[~df_test_eval['sequence'].isin(df_test['sequence'])]
 df_train = df_unique[~df_unique['sequence'].isin(df_test_eval['sequence'])]
 
+# FOR TESTING PUPOSES ONLY (THE SIZE HAS TO BE 64 SO IT MATCHA  BATCH SIZE)
+df_train = df_train.head(64)
+
 # one hot encoding
 aas = [i for i in 'ACDEFGHIKLMNPQRSTVWY*']
 
 def esm_embedding(seqs, max_len):
-    # print(seqs)
     
     # data is a list of tuples (index, sequence)
     data = [(str(round_val), sequence + "<pad>" * (max_len - len(sequence))) for round_val, sequence in seqs]
@@ -98,7 +111,7 @@ def esm_embedding(seqs, max_len):
         
         for i, tokens_len in enumerate(batch_lens):
             sequence_representations.append((token_representations[i, 1 : tokens_len - 1]).numpy())
-        # print('Finished appending sequence representations')
+        
         prev = next
         if next + batch_size > len(data):
             next = len(data)
@@ -118,7 +131,6 @@ def esm_embedding(seqs, max_len):
 
 
 def encode(df, max_len):
-    print("are we encoding?")
     index_and_sequence = [(round_val, ((df.loc[round_val, 'sequence'])[:-1] + '<unk>'*(max_len - len(df.loc[round_val, 'sequence'])) + '<eos>')) for round_val in df.index.tolist()]
     indexes, encoded_numpy_arr= esm_embedding(index_and_sequence, max_len)
     
@@ -131,7 +143,6 @@ def encode(df, max_len):
     df_encoded.index = df_encoded.index.astype('int64')
 
     out = df
-    print(type(df_encoded))
     out.loc[:,'encoded'] = df_encoded
     
     return out
@@ -140,7 +151,7 @@ def encode(df, max_len):
 max_seq_length = df_unique['sequence'].str.len().max() + 10
 # rerun_encoding = True
 
-if not os.path.exists(os.path.join(procdir, 'train_ESM_embedding_2d.parquet')) or rerun_encoding:
+if not os.path.exists(os.path.join(procdir, 'train_ESM_embedding_2d.pkl')) or rerun_encoding:
     print("Saving to files")
     
     df_train = encode(df_train, max_seq_length)
@@ -150,39 +161,38 @@ if not os.path.exists(os.path.join(procdir, 'train_ESM_embedding_2d.parquet')) o
     df_test = encode(df_test, max_seq_length)
     print("Saved Test")
     # save data
-    df_train.to_parquet(os.path.join(procdir, 'train_ESM_embedding_2d.parquet'))
-    df_eval.to_parquet(os.path.join(procdir, 'train_ESM_embedding_2d.parquet'))
-    df_test.to_parquet(os.path.join(procdir, 'train_ESM_embedding_2d.parquet'))
+    df_train.to_pickle(os.path.join(procdir, 'train_ESM_embedding_2d.pkl'))
+    df_eval.to_pickle(os.path.join(procdir, 'train_ESM_embedding_2d.pkl'))
+    df_test.to_pickle(os.path.join(procdir, 'train_ESM_embedding_2d.pkl'))
 
 else:
-    df_train = pd.read_parquet(os.path.join(procdir, 'train_ESM_embedding_2d.parquet')) # too large
-    df_eval = pd.read_parquet(os.path.join(procdir, 'train_ESM_embedding_2d.parquet'))
-    df_test = pd.read_parquet(os.path.join(procdir, 'train_ESM_embedding_2d.parquet'))
+    df_train = pd.read_pickle(os.path.join(procdir, 'train_ESM_embedding_2d.pkl')) # too large
+    df_eval = pd.read_pickle(os.path.join(procdir, 'train_ESM_embedding_2d.pkl'))
+    df_test = pd.read_pickle(os.path.join(procdir, 'train_ESM_embedding_2d.pkl'))
     # max_seq_length would not be defined if the dfs were already loaded in an external file
 
 
 # test out dataset class
-ds = MBEDataset(df_eval)
+# ds = MBEDataset(df_eval)
 
 # test out datamodule class - takes a while to load pickled data
-dm = MBEDataModule(procdir, batch_size=BATCH_SIZE)
-dm.setup(encode = 'ESM_embedding_2d.parquet')
-# test = next(iter(dm.train_dataloader()))
-# test
+dm = MBEDataModule(procdir, "ESM_embedding_2d.pkl", batch_size=BATCH_SIZE)
+dm.setup()
 
+pw = MBEDataset(df_train).get_weights()
 
-# NOTE: should a CNN be using an LSTM
-model = LSTM(len(ds[0][0]),3, 1, ds.get_weights())
+model = CNN(number_of_layers=NUMBER_OF_LAYERS, kernel_size=KS, stride=STRIDE, n_first_out_ch=FIRST_OUT_CH_SIZE, out_layer_inc=INC_OF_OUT_LAYERS, p_ks=P_KS, p_s=P_S, pos_weight=pw)
 # model(test[0])[:5]
 
+print("this is supposed to be a tensor: ", type(pw))
 # instantiate lightning model
-lit_model = LitMBE(model, pos_weight=ds.get_weights())
+lit_model = LitMBE(model, pos_weight= pw, wd = WEIGHT_DECAY)
 
 # use weights and biases logger
-wandb_logger = WandbLogger(project='mbe', name = "LSTM ESM2 no wd")
+wandb_logger = WandbLogger(project='mbe', name = "CNN ESM2")
 wandb_logger.experiment.config.update({
     "lr": 0.001,
-    "pos_weight": ds.get_weights(),
+    "pos_weight": pw,
     "n_units": 128,
     "batch_size": BATCH_SIZE,
     "max_seq_length": max_seq_length,
@@ -190,7 +200,14 @@ wandb_logger.experiment.config.update({
     "enc": "ESM2",
     "loss": "BCEWithLogitsLoss",
     "opt": "Adam",
-    "weight_decay": 0
+    "weight_decay": 1e-5,
+    "numbe_of_out_channels_in _first_conv": FIRST_OUT_CH_SIZE,
+    "n_layers": NUMBER_OF_LAYERS,
+    "kernel_size": KS,
+    "stride": STRIDE,
+    "N_out_mult_increments_in_convs":  INC_OF_OUT_LAYERS,
+    "pooling_kernel_size": P_KS,
+    "pooling_stride": P_S
 })
 
 # train model

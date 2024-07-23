@@ -22,6 +22,17 @@ datadir = './out/corrected/counts'
 procdir = './out/modelling/processed'
 BATCH_SIZE=64
 
+import sys
+
+# Paraemters:
+# N_LAYERS = 1 # this is also the number of stacked LSTMS
+# HIDDEN_SIZE = 3 
+# WEIGHT_DECAY = 0 # if it is zero, then no weight_decay
+
+N_LAYERS = int(sys.argv[1]) # this is also the number of stacked LSTMS
+HIDDEN_SIZE = int(sys.argv[2]) 
+WEIGHT_DECAY = float(sys.argv[3])
+
 
 os.makedirs(procdir, exist_ok=True)
 np.random.seed(12345)
@@ -54,12 +65,11 @@ df_unique = (df
                      )
              )
 
-thresh = 1
+thresh = 1  # TODO: part of the parameters that will be used in bash script
 df_unique = df_unique.assign(set = lambda x: ['high' if w >= thresh else 'low' for w in x['weight']])
 
 # Keep only the sequences labeled as high (the one that have a count geater than one)
-df_unique = df_unique.loc[df_unique['set'] == 'high']
-print('size of df_unique: ', df_unique.shape)
+# df_unique = df_unique.loc[df_unique['set'] == 'high']
 
 df_test_eval = df_unique.sample(frac=1).head(100)
 df_test = df_test_eval.head(50)
@@ -68,12 +78,12 @@ df_test = df_test_eval.head(50)
 df_eval = df_test_eval[~df_test_eval['sequence'].isin(df_test['sequence'])]
 df_train = df_unique[~df_unique['sequence'].isin(df_test_eval['sequence'])]
 
+#############
+
 # one hot encoding
-aas = [i for i in 'ACDEFGHIKLMNPQRSTVWY*']
+aas = [i for i in 'ACDEFGHIKLMNPQRSTVWY']
 
 def esm_embedding(seqs, max_len):
-    # print(seqs)
-    
     # data is a list of tuples (index, sequence)
     data = [(str(round_val), sequence + "<pad>" * (max_len - len(sequence))) for round_val, sequence in seqs]
     
@@ -82,7 +92,9 @@ def esm_embedding(seqs, max_len):
     batch_converter = alphabet.get_batch_converter(max_len)
     model.eval()
 
-    batch_size = 2 ** 5 # = 32
+    # TODO: this batch is different from the "global" one, if I make it bigger it doesn't work. Should I change this one
+    # or should I change the global. Or neither?
+    batch_size = 2 ** 4 # = 16
     prev = 0
     next = batch_size if batch_size < len(data) else len(data)
 
@@ -90,10 +102,8 @@ def esm_embedding(seqs, max_len):
     # In this case, sequence represenation is a 3D array. a list of 2D array represeations of sequences
     sequence_representations = []
     while next <= len(data) and next != prev:
-        # print("Prev: ", prev, " and Next: ", next)
         batch_labels, batch_seq, batch_tokens = batch_converter(data[prev:next])
         labels = labels + batch_labels
-        # print("Finished the batch items")
         batch_lens = (batch_tokens != alphabet.padding_idx).sum(1)
 
         with torch.no_grad():
@@ -103,7 +113,7 @@ def esm_embedding(seqs, max_len):
         # are left with a 2D array representation of the data
         for i, tokens_len in enumerate(batch_lens):
             sequence_representations.append((token_representations[i, 1 : tokens_len - 1]).numpy())
-        print('Finished appending sequence representations')
+
         prev = next
         if next + batch_size > len(data):
             next = len(data)
@@ -136,57 +146,49 @@ def encode(df, max_len):
     df_encoded.index = df_encoded.index.astype('int64')
 
     out = df
+    # TODO: this might be wrong
+    # Try using : .loc[row_indexer, col_indexer] = value
     out.loc[:,'encoded'] = df_encoded
-    print(type(out))
     return out
 
 
 max_seq_length = df_unique['sequence'].str.len().max() + 10
 # rerun_encoding = True
 
-if not os.path.exists(os.path.join(procdir, 'train_ESM_embedding_2d.parquet')) or rerun_encoding:
-    print("Saving to files")
+if not os.path.exists(os.path.join(procdir, 'train_ESM_embedding_2d.pkl')) or rerun_encoding:
+    print("Encoding and saving data to files")
     
     df_train = encode(df_train, max_seq_length)
-    print('Saved Train')
+    print('Encoded Train')
     df_eval = encode(df_eval, max_seq_length)
-    print("Saved Eval")
+    print("Encoded Eval")
     df_test = encode(df_test, max_seq_length)
-    print("Saved Test")
+    print("Encoded Test")
+
     # save data
-    df_train.to_parquet(os.path.join(procdir, 'train_ESM_embedding_2d.parquet'))
-    df_eval.to_parquet(os.path.join(procdir, 'train_ESM_embedding_2d.parquet'))
-    df_test.to_parquet(os.path.join(procdir, 'train_ESM_embedding_2d.parquet'))
+    df_train.to_pickle(os.path.join(procdir, 'train_ESM_embedding_2d.pkl'))
+    df_eval.to_pickle(os.path.join(procdir, 'eval_ESM_embedding_2d.pkl'))
+    df_test.to_pickle(os.path.join(procdir, 'test_ESM_embedding_2d.pkl'))
 
 else:
-    df_train = pd.read_parquet(os.path.join(procdir, 'train_ESM_embedding_2d.parquet')) # too large
-    df_eval = pd.read_parquet(os.path.join(procdir, 'train_ESM_embedding_2d.parquet'))
-    df_test = pd.read_parquet(os.path.join(procdir, 'train_ESM_embedding_2d.parquet'))
-    # max_seq_length would not be defined if the dfs were already loaded in an external file
-
-
-# test out dataset class
-ds = MBEDataset(df_eval)
+    df_train = pd.read_pickle(os.path.join(procdir, 'train_ESM_embedding_2d.pkl')) # too large
+    df_eval = pd.read_pickle(os.path.join(procdir, 'eval_ESM_embedding_2d.pkl'))
+    df_test = pd.read_pickle(os.path.join(procdir, 'test_ESM_embedding_2d.pkl'))
 
 # test out datamodule class - takes a while to load pickled data
-dm = MBEDataModule(procdir, batch_size=BATCH_SIZE)
-dm.setup(encode = 'ESM_embedding_2d.parquet')
-# test = next(iter(dm.train_dataloader()))
-# test
-
-
-
-model = LSTM(len(ds[0][0]),3, 1, ds.get_weights())
-# model(test[0])[:5]
+dm = MBEDataModule(procdir, "ESM_embedding_2d.pkl", batch_size=BATCH_SIZE)
+dm.setup()
+ 
+model = LSTM(len(df_train['encoded'].iloc[0][0]), HIDDEN_SIZE , N_LAYERS, pos_weight=MBEDataset(df_train).get_weights())
 
 # instantiate lightning model
-lit_model = LitMBE(model, pos_weight=ds.get_weights())
+lit_model = LitMBE(model, pos_weight=MBEDataset(df_train).get_weights(), wd = WEIGHT_DECAY)
 
 # use weights and biases logger
-wandb_logger = WandbLogger(project='mbe', name = "LSTM ESM2 no wd")
+wandb_logger = WandbLogger(project='mbe', name = "LSTM ESM2")
 wandb_logger.experiment.config.update({
     "lr": 0.001,
-    "pos_weight": ds.get_weights(),
+    "pos_weight": 1,
     "n_units": 128,
     "batch_size": BATCH_SIZE,
     "max_seq_length": max_seq_length,
@@ -194,8 +196,13 @@ wandb_logger.experiment.config.update({
     "enc": "ESM2",
     "loss": "BCEWithLogitsLoss",
     "opt": "Adam",
-    "weight_decay": 0
+    "weight_decay": WEIGHT_DECAY,
+    "n_layers" : N_LAYERS,
+    "n_hidden_layers": HIDDEN_SIZE,
+
 })
+
+
 
 # train model
 trainer = L.Trainer(max_epochs=10, logger = wandb_logger)
