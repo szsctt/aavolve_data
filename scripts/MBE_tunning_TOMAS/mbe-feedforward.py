@@ -159,9 +159,13 @@ def encode(df, max_len):
           .assign(encoded = df['sequence'].apply(lambda x: one_hot(x, max_seq_length)))
           .drop('sequence', axis=1)
           )
-        return out
+        # return out
     elif ENCODING == 'label_encoding':
-        pass
+        out = (df
+          .assign(encoded = df['sequence'].apply(lambda x: label_encoding(x, max_seq_length)))
+          .drop('sequence', axis=1)
+          )
+        # return out
     else:
         index_and_sequence = [(round_val, ((df.loc[round_val, 'sequence'])[:-1] + '<unk>'*(max_len - len(df.loc[round_val, 'sequence'])) + '<eos>')) for round_val in df.index.tolist()]
         indexes, encoded_numpy_arrr= esm_embedding(index_and_sequence, max_len)
@@ -178,7 +182,7 @@ def encode(df, max_len):
         # out['encoded'] = df_encoded
         out.loc[:,'encoded'] = df_encoded
         
-        return out
+    return out
 
 
 max_seq_length = df_unique['sequence'].str.len().max() + 10
