@@ -14,9 +14,9 @@ from common_classes import MBEDataset, MBEDataModule, LSTM, LitMBE
 import wandb
 
 torch.set_num_threads(24)
-WANDB_NOTEBOOK_NAME = '2024-06-13_mbe-linear.ipynb'
+# WANDB_NOTEBOOK_NAME = '2024-06-13_mbe-linear.ipynb'
 
-wandb.login()
+# wandb.login()
 
 datadir = './out/corrected/counts'
 procdir = './out/modelling/processed'
@@ -185,7 +185,7 @@ model = LSTM(len(df_train['encoded'].iloc[0][0]), HIDDEN_SIZE , N_LAYERS, pos_we
 lit_model = LitMBE(model, pos_weight=MBEDataset(df_train).get_weights(), wd = WEIGHT_DECAY)
 
 # use weights and biases logger
-wandb_logger = WandbLogger(project='mbe', name = "LSTM ESM2")
+wandb_logger = WandbLogger(project='mbe', name = f"LSTM ESM2 l:{N_LAYERS}, hs:{HIDDEN_SIZE}")
 wandb_logger.experiment.config.update({
     "lr": 0.001,
     "pos_weight": 1,

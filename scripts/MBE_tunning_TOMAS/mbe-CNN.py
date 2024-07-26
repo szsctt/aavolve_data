@@ -14,9 +14,9 @@ from common_classes import MBEDataset, MBEDataModule,CNN, LitMBE
 import wandb
 
 torch.set_num_threads(24)
-WANDB_NOTEBOOK_NAME = '2024-06-13_mbe-linear.ipynb'
+# WANDB_NOTEBOOK_NAME = '2024-06-13_mbe-linear.ipynb'
 
-wandb.login()
+# wandb.login()
 
 datadir = './out/corrected/counts'
 procdir = './out/modelling/processed'

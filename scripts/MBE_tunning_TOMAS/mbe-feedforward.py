@@ -17,19 +17,34 @@ import wandb
 
 torch.set_num_threads(24)
 
-WANDB_NOTEBOOK_NAME = '2024-06-13_mbe-linear.ipynb'
+# WANDB_NOTEBOOK_NAME = '2024-06-13_mbe-linear.ipynb'
 
-wandb.login()
+# wandb.login()
 
 datadir = './out/corrected/counts'
 procdir = './out/modelling/processed'
 BATCH_SIZE=64
 
+import sys
 # Parameters
-NUM_LAYERS = 4
-WEIGHT_DECAY = 1e-5
-N_UNITS = 128
-ENCODING = "ESM"
+# NUM_LAYERS = 4
+# WEIGHT_DECAY = 1e-5
+# ENCODING = "ESM"
+
+# 
+ENCODING = sys.argv[1]
+print("encodgin: ", ENCODING)
+NUM_LAYERS = int(sys.argv[2])
+print("n layers: ", NUM_LAYERS)
+WEIGHT_DECAY = float(sys.argv[3])
+print("w d: ", WEIGHT_DECAY)
+LAYER_SIZE_VAR = sys.argv[4]
+print("l size var: ", LAYER_SIZE_VAR)
+"""
+None: the size of the hidden layers doesn't change
+Inc: the size of the hidden layer increases up to the middle hidden layer and then it decreses until the out layer
+Dec: the size of the hidden layers decreses until it reaches the out layer
+"""
 
 
 
@@ -76,7 +91,6 @@ df_test = df_test_eval.head(50)
 df_eval = df_test_eval[~df_test_eval['sequence'].isin(df_test['sequence'])]
 df_train = df_unique[~df_unique['sequence'].isin(df_test_eval['sequence'])]
 
-# one hot encoding
 aas = [i for i in 'ACDEFGHIKLMNPQRSTVWY*']
 
 def one_hot(seq, max_l):
@@ -91,7 +105,7 @@ def one_hot(seq, max_l):
 
 def label_encoding(seq, max_l):
     """
-    Encode a sequence of amino acids with integer valus for each type fo amino acid
+    Encode a sequence of amino acids with integer values for each type fo amino acid
     """
     out = np.zeros(max_l)
     label_encoder = LabelEncoder().fit(aas)
@@ -155,12 +169,14 @@ def esm_embedding(seqs, max_len):
 
 def encode(df, max_len):
     if ENCODING == 'onehot':
+        print("encoding one hot")
         out = (df
           .assign(encoded = df['sequence'].apply(lambda x: one_hot(x, max_seq_length)))
           .drop('sequence', axis=1)
           )
         # return out
     elif ENCODING == 'label_encoding':
+        print("encoding label")
         out = (df
           .assign(encoded = df['sequence'].apply(lambda x: label_encoding(x, max_seq_length)))
           .drop('sequence', axis=1)
@@ -191,7 +207,7 @@ max_seq_length = df_unique['sequence'].str.len().max() + 10
 # check if file exists
 file_exists = False
 
-if ENCODING == 'one-hot':
+if ENCODING == 'onehot':
     file_exists = os.path.exists(os.path.join(procdir, 'train_onehot.pkl'))
 elif ENCODING == 'label_encoding':
     file_exists = os.path.exists(os.path.join(procdir, 'train_label_encoding.pkl'))
@@ -208,7 +224,7 @@ if not file_exists or rerun_encoding:
     df_test = encode(df_test, max_seq_length)
     print("Saved Test")
     # save data
-    if ENCODING == 'one-hot':
+    if ENCODING == 'onehot':
         df_train.to_pickle(os.path.join(procdir, 'train_onehot.pkl'))
         df_eval.to_pickle(os.path.join(procdir, 'eval_onehot.pkl'))
         df_test.to_pickle(os.path.join(procdir, 'test_onehot.pkl'))
@@ -222,7 +238,7 @@ if not file_exists or rerun_encoding:
         df_test.to_parquet(os.path.join(procdir, 'test_ESM_embedding.parquet'))
 
 else:
-    if ENCODING == 'one-hot':
+    if ENCODING == 'onehot':
         df_train = pd.read_pickle(os.path.join(procdir, 'train_onehot.pkl')) # not too large?
         df_eval = pd.read_pickle(os.path.join(procdir, 'eval_onehot.pkl'))
         df_test = pd.read_pickle(os.path.join(procdir, 'test_onehot.pkl'))
@@ -239,36 +255,43 @@ else:
 ds = MBEDataset(df_eval)
 
 # test out datamodule class - takes a while to load pickled data
-dm = MBEDataModule(procdir,batch_size=BATCH_SIZE)
-dm.setup(encode = 'ESM_embedding.parquet')
+eofn = "" # End Of File Name
+if ENCODING == "onehot":
+    eofn = "onehot.pkl"
+elif ENCODING == "label_encoding":
+    eofn = "label_encoding.pkl"
+else:
+    eofn = 'ESM_embedding.parquet'
+dm = MBEDataModule(procdir,batch_size=BATCH_SIZE, encode = eofn)
+dm.setup()
 # test = next(iter(dm.train_dataloader()))
 # test
 
 
-model = MBEFeedForward(len(ds[0][0]), pos_weight=ds.get_weights(), n_units = N_UNITS, num_layers=NUM_LAYERS)
+model = MBEFeedForward(len(ds[0][0]), pos_weight=ds.get_weights(), num_layers=NUM_LAYERS, layer_size_var = LAYER_SIZE_VAR)
 
 # instantiate lightning model
 lit_model = LitMBE(model, pos_weight=ds.get_weights(), wd = WEIGHT_DECAY)
 
 # use weights and biases logger
-wandb_logger = WandbLogger(project='mbe', name = f"feedforward ESM2 w {NUM_LAYERS}")
+wandb_logger = WandbLogger(project='mbe', name = f"feedforward {ENCODING}, l:{NUM_LAYERS}, {LAYER_SIZE_VAR}")
 wandb_logger.experiment.config.update({
     "lr": 0.001,
     "pos_weight": ds.get_weights(),
-    "n_units": 128,
     "batch_size": BATCH_SIZE,
     "max_seq_length": max_seq_length,
     "arch": "feedforward",
-    "enc": "ESM2",
+    "enc": ENCODING,
     "loss": "BCEWithLogitsLoss",
     "opt": "Adam",
-    "weight_decay": 0.00005,
-    "number_layers": NUM_LAYERS
+    "weight_decay": WEIGHT_DECAY,
+    "number_layers": NUM_LAYERS,
+    "layer_size_variation": LAYER_SIZE_VAR
 })
 
 # train model
 trainer = L.Trainer(max_epochs=10, logger = wandb_logger)
 # trainer = L.Trainer(max_epochs=10)
-trainer.validate(model = lit_model, datamodule = dm) # The error is here
+trainer.validate(model = lit_model, datamodule = dm)
 trainer.fit(model = lit_model, datamodule = dm)
 wandb.finish()

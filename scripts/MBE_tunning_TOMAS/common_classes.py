@@ -133,39 +133,124 @@ class MBELogisticRegression(nn.Module):
         # density ratio is p/(1-p), adjusted for class imbalance
         return p/(1-p) / self.pos_weight
 
-def linear_layers(in_features, out_fatures, num_layers = 1, act = True):
-
+def linear_layers(in_features, out_features = 1, num_h_layers = 1, layer_size_var = 'None'):
+    print("linear layers")
+    """
+    Add linear layers to the feed forward network
+    layer_size_vay = 
+    None: all the layers will have the same input and output
+    increase: The layers will increase until the middle and then decrese (this might not be useful?)
+    decrese: the layers will decrese all the way down
+    """
+    # TODO: out features should always be 1
+    # TODO: in features would be a constant too because it is determined by the data not the user and the data always has the
+    # same number of in features
     layers = []
     
-    # Add the input layer and first ReLU activation
-    layers.append(nn.Linear(in_features, out_fatures, dtype=torch.float32))
     
-    decrement = int((in_features - out_fatures)/num_layers)
-    in_t = in_features
-    out_t = out_fatures
-
-    # Add the hidden layers
-    for x in range(1, num_layers):
-        if act: 
+    
+    if layer_size_var == 'None':
+        print("equal")
+        layers.append(nn.Linear(in_features, in_features, dtype=torch.float32))
+        for x in range(num_h_layers):
             layers.append(nn.ReLU())
+            if x == num_h_layers - 1:
+                layers.append(nn.Linear(in_features, out_features, dtype=torch.float32))
+            else:
+                layers.append(nn.Linear(in_features, in_features, dtype=torch.float32))
 
-        if x == num_layers - 1 and out_t != out_fatures:
-            out_t = out_fatures
+    elif layer_size_var == 'inc':
+        print("INCREASE")
+        # TODO: add the number of increments as a parameters
+        increment = 100
+
+        in_t = in_features
+        out_t = in_t + increment
 
         layers.append(nn.Linear(in_t, out_t, dtype=torch.float32))
-        
+
+        for i in range(num_h_layers):
+            in_t = out_t
+            out_t = out_t + increment
+
+            layers.append(nn.ReLU())
+
+            if i == num_h_layers - 1:
+                layers.append(nn.Linear(in_t, out_features, dtype=torch.float32))
+            else:
+                layers.append(nn.Linear(in_t, out_t, dtype=torch.float32))
+
+    elif layer_size_var == 'dec':
+        """
+        This settting is not very useful since decreasing the number of nodes makes the NN lose a lot of information
+        """
+        print("DECREASING")
+        decrement = int((in_features - out_features)/num_h_layers)
+        in_t = in_features
+        out_t = in_t - decrement
+        print("initial: ", out_t, ", ", in_t)
+
+        layers.append(nn.Linear(in_t, out_t, dtype=torch.float32))
+
+        # Add the hidden layers
+        for x in range(0, num_h_layers):
+            in_t = out_t
+            out_t = out_t - decrement
+            
+            layers.append(nn.ReLU())
+
+            # TODO: there should be a way to avoid the out_t <= 0 condition, check how to do it
+            if (x == num_h_layers - 1 and out_t != out_features) or  out_t <= 0:
+                out_t = out_features
+
+            layers.append(nn.Linear(in_t, out_t, dtype=torch.float32))
+            print("(out, in): ", out_t, ", ", in_t)
+    else: # layer_size_var == 'hybrid'
+        delta  = 100 # this is the change of neurons between layers
+        even = num_h_layers % 2 == 0
+        inc = True
+
+        in_t = in_features
+        out_t = in_t + delta
+
+        layers.append(nn.Linear(in_t, out_t, dtype=torch.float32))
+        layers.append(nn.ReLU())
+
+        for i in range(num_h_layers):
+
+            in_t = out_t
+            print("in and out: ", in_t, ", ", out_t)
+            if inc:
+                out_t = out_t + delta
+
+                # find the switching point between increasing and decresing
+                if i == int(num_h_layers / 2) - 1:
+                    inc = False
+                    if even:
+                        out_t = in_t
+                
+                layers.append(nn.Linear(in_t, out_t, dtype=torch.float32))
+    
+            else:
+                out_t = out_t - delta
+                layers.append(nn.Linear(in_t, out_t, dtype=torch.float32))
+
+            layers.append(nn.ReLU())
+
         in_t = out_t
-        out_t = out_t - decrement
+
+        layers.append(nn.Linear(in_t, out_features, dtype=torch.float32))
+        pass
     
     return layers
 
 class MBEFeedForward(MBELogisticRegression):
 
-    def __init__(self, input_size, pos_weight=None, n_units=128, num_layers = 1):
+    def __init__(self, input_size, pos_weight=None, num_layers = 1, layer_size_var = 'None'):
         super().__init__(input_size, pos_weight)
-        self.n_units = n_units
         self.pos_weight = pos_weight
-        self.linear = nn.Sequential(*linear_layers(input_size, n_units, num_layers))
+        self.layer_size_var = layer_size_var
+        self.linear = nn.Sequential(*linear_layers(input_size, num_h_layers=num_layers, layer_size_var=self.layer_size_var))
 
 class LSTM(nn.Module):
     def __init__(self, input_size, hidden_size, n_stacked_lstms,  pos_weight = 1):
@@ -366,9 +451,11 @@ class LitMBE(L.LightningModule):
         print("Batch x dimensions: ", x.shape)
         with torch.no_grad():
             le = self.model.predict(x).squeeze().cpu().numpy()
-            print("le shape: ", le.shape)
-            print("y.cpu().numpy(): ", y.cpu().numpy().shape)
+            print("le shape: ", le.shape, "  type: ", type(le))
+            print("y.cpu().numpy(): ", y.cpu().numpy().shape, "   type: ", type(y.cpu().numpy()))
             spearman = self.spearman(le, y.cpu().numpy()).statistic
+
+            print("spearman type: ", type(spearman))
             self.log('val_spearman', spearman, on_step = False, on_epoch = True, prog_bar = True)
         
 
