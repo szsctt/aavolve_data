@@ -1,10 +1,12 @@
 import pandas as pd
+# import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
 from torch import nn
 import lightning as L
 import os
 from scipy import stats
+import math
 
 # TODO: CHECK IF YOU NEED THIS:
 import torch.nn.functional as F
@@ -259,21 +261,27 @@ class LSTM(nn.Module):
         self.n_stacked_lstms = n_stacked_lstms
         self.input_size = input_size
         self.pos_weight = pos_weight
-        self.lstm = nn.LSTM(input_size, hidden_size, n_stacked_lstms, batch_first=True)
+        self.lstm = nn.LSTM(input_size=input_size, hidden_size=hidden_size, num_layers=n_stacked_lstms, batch_first=True)
         self.fc = nn.Linear(hidden_size, 1, dtype = torch.float32)
 
     def forward(self, x):
         """
         This will always return the probabilites
         """
-        device = x.device
-        h0 = torch.zeros(self.n_stacked_lstms, x.size(0), self.hidden_size).to(device)
-        c0 = torch.zeros(self.n_stacked_lstms, x.size(0), self.hidden_size).to(device)
+        # device = x.device
+        # h0 = torch.zeros(self.n_stacked_lstms, x.size(0), self.hidden_size).to(device)
+        # c0 = torch.zeros(self.n_stacked_lstms, x.size(0), self.hidden_size).to(device)
 
-        out, _ = self.lstm(x, (h0, c0))
-        out = out.to(torch.float32)
+        # out, _ = self.lstm(x, (h0, c0))
+        # print("first; ", type(x))
+        out, _ = self.lstm(x)
+        # out = out.to(torch.float32)
+        # print(type(out))
 
-        out = self.fc(out[:, -1, : ])
+        # out = self.fc(out[:, -1, : ])
+        out = self.fc(out)
+        # print("last: ", type(out), " dims: ", out.shape)
+        out = torch.mean(out, dim=1)
         return out
     
     def predict(self,x):
@@ -324,7 +332,7 @@ def find_minimum_values(target):
 
 ###############################################
 
-def create_conv_layers(num_layers, n_first_out_ch, kernel_size, stride, layer_out_increment, p_ks, p_s):
+def create_conv_layers(num_layers, input_channel, out_channels, kernel_size, stride, padding, dilation):
     """
     Helper function to create N number of Conv2d layers
     Each "layer" consists of (Conv2d + ReLU) + (Conv2d + ReLU) + Pooling
@@ -332,84 +340,105 @@ def create_conv_layers(num_layers, n_first_out_ch, kernel_size, stride, layer_ou
     p_ks = pooling kernel size
     p_s = pooling stride
     """
+    
+    """self.conv1 = nn.Conv1d(in_channels=self.in_channels, out_channels=self.out_channels[0], kernel_size=self.ks, stride=self.stride)
+    self.fc1 = nn.Linear(self.out_channels[1],64)
+
+    self.conv2 = nn.Conv1d(in_channels=self.out_channels[0], out_channels=self.out_channels[1], kernel_size=self.ks, stride=self.stride)
+    self.fc2 = nn.Linear(64,1)
+
+    self.pool = nn.MaxPool1d(kernel_size=self.ks, stride=self.stride)
+    self.relu = nn.ReLU()"""
+    print("BENINING: nL: ", num_layers, " IN: ", input_channel, " OUT", out_channels, " KS: ", kernel_size, " S: ", stride, " P: ", padding, " D: ", dilation)
     layers = []
-    in_t = 50
-    out_t = n_first_out_ch
+
     for i in range(num_layers):
-        print("first input: (", in_t,", ", out_t, ", kernel_size=", kernel_size, ", stride= ", stride, ")")
-        layers.append(nn.Conv2d(in_t, out_t, kernel_size=kernel_size, stride=stride))
+        if i == 0:
+            print(f"{i}:  IN: ", input_channel, " OUT", out_channels[0], " KS: ", kernel_size, " S: ", stride, " P: ", padding, " D: ", dilation)
+            layers.append(nn.Conv1d(in_channels=input_channel, out_channels=out_channels[0], kernel_size=kernel_size, stride=stride))
+        else:
+            layers.append(nn.Conv1d(in_channels=out_channels[i - 1], out_channels=out_channels[i], kernel_size=kernel_size, stride=stride))
+            print(f"{i}:  IN: ", out_channels[i - 1], " OUT", out_channels[i], " KS: ", kernel_size, " S: ", stride, " P: ", padding, " D: ", dilation)
+        
+        layers.append(nn.BatchNorm1d(out_channels[i]))
         layers.append(nn.ReLU())
+        layers.append(nn.Dropout(p=0.3))
+        layers.append(nn.MaxPool1d(kernel_size=kernel_size, stride=stride))
+        
 
-        in_t = out_t
-        out_t = out_t * layer_out_increment
-        print("second input: (", in_t,", ", out_t, ", kernel_size=", kernel_size, ", stride= ", stride, ")")
-        layers.append(nn.Conv2d(in_t, out_t, kernel_size=kernel_size, stride=stride))
-        layers.append(nn.ReLU())
 
-        in_t = out_t
-        out_t = out_t * layer_out_increment
-        print("pooling input: (", p_ks, ", ", p_s, ")")
-        layers.append(nn.MaxPool2d(p_ks, p_s))
+        
+        # layers.append(nn.Linear(out_channels[-1], out_channels[-1] * 2 ** 2))
+        # layers.append(nn.ReLU())
+        # layers.append(nn.Linear(out_channels[-1] * 2 ** 2, 1))
 
     return layers
+
+def calc_Lout(L, p, d, ks, s):
+    return math.floor(((L + (2 * p) - (d * (ks - 1)) -1 )/s) + 1)
 
 class CNN(nn.Module):
     """
     Class for logistic regression. 
     Returns logits by default, or probabilities if probs=True.
     """
-    # TODO: ADD ALL OF THESE PARAMETERS TO THE PARAEMTERS USED IN THE BASH FILE
-    def __init__(self, number_of_layers, kernel_size = 3, stride = 1, n_first_out_ch = 100, out_layer_inc = 2, p_ks = 2, p_s = 2, pos_weight = 1):
+    def __init__(self, n_layers, out_channels, ks , stride, padding, dilation, pos_weigth = 1):
         super().__init__()
-        self.n_first_out_ch = n_first_out_ch # this is the nubmer of outpute channels of the first Conv2d layer
-        self.number_of_layers = number_of_layers
-        self.kernel_size = kernel_size
+        self.n_layers = n_layers
+        self.in_channels = 1280
+        self.out_channels = out_channels
+        self.ks = ks
         self.stride = stride
-        self.pos_weight = pos_weight
-        # TODO: I belive that the sequential is used correctly, but make sure
-        #self.conv_layers = nn.Sequential(*create_conv_layers(number_of_layers, n_first_out_ch, kernel_size, stride, out_layer_inc, p_ks, p_s))
-        
-        self.last_out = 500000
+        self.padding = padding
+        self.dilation = dilation
+        self.pos_weight = pos_weigth
 
-        self.conv1 = nn.Conv2d(1, self.n_first_out_ch, self.kernel_size)
-        self.conv2 = nn.Conv2d(self.n_first_out_ch, self.last_out, self.kernel_size)
-        self.pool = nn.MaxPool2d(p_ks, p_s)
-        # self.linear_layers = nn.Sequential(*linear_layers(n_first_out_ch *(out_layer_inc*2*number_of_layers), 1, act = False))
-        self.fc1 = nn.Linear(self.last_out*self.kernel_size*self.kernel_size,200)
-        self.fc2 = nn.Linear(200,100)
-        self.fc3 = nn.Linear(100,50)    
+
+        # self.conv1 = nn.Conv1d(in_channels=self.in_channels, out_channels=self.out_channels[0], kernel_size=self.ks, stride=self.stride)
+        # self.bn1 = nn.BatchNorm1d(self.out_channels[0])
+        self.fc1 = nn.Linear(self.out_channels[-1], self.out_channels[-1] * 2**3)
+
+        # self.conv2 = nn.Conv1d(in_channels=self.out_channels[0], out_channels=self.out_channels[1], kernel_size=self.ks, stride=self.stride)
+        # self.bn2 = nn.BatchNorm1d(self.out_channels[1])
+        self.fc2 = nn.Linear(self.out_channels[-1] * 2**3,1)
+
+        # self.pool = nn.MaxPool1d(kernel_size=self.ks, stride=self.stride)
+        self.relu = nn.ReLU()
+
+        self.convs = nn.Sequential(*create_conv_layers(self.n_layers, self.in_channels, self.out_channels, self.ks, self.stride, self.padding, self.dilation))
+        
 
     def forward(self, x):
         """
         Return logits or probabilities
         
         """
+        
+        out = x.permute(0,2,1)
+        
+        # out = self.conv1(out)
+        # out = self.relu(out)
+        # out = self.pool(out)
+        # out = self.bn1(out)
+        
+        # out = self.conv2(out)
+        # out = self.relu(out)
+        # out = self.pool(out)
+        # out = self.bn2(out)
 
-        # # TODO: not sure what nn.Sequential returns so this is prob wrong
-        # print("x.shape: ", x.shape)
-        # out = self.conv_layers(x)
-        # print("1. out.shape: ", out.shape)
-        # out = self.linear_layers(out)
-        # print("2. out.shape: ", out.shape)
-        # # TODO: try squeezing out before returning it
-        # return out
+        out = out.float()
+        out = self.convs(out)
 
-        print("X SIZE: ", x.shape)
-        out = x.unsqueeze(0).permute(1,0,2,3)
-        out = self.pool( F.relu(self.conv1(out)))
-        print("OUT SIZE 1: ", out.shape)
-        out = self.pool( F.relu(self.conv2(out)))
-        print("OUT SIZE 2: ", out.shape)
-        out = out.view(-1, self.last_out*self.kernel_size*self.kernel_size)
-        print("OUT SIZE 3: ", out.shape)
-        out = F.relu(self.fc1(out))
-        print("OUT SIZE 4: ", out.shape)
-        out = F.relu(self.fc2(out))
-        print("OUT SIZE 5: ", out.shape)
-        out = F.relu(self.fc3(out))
-        print("OUT SIZE 6: ", out.shape)
-        out = out.permute(1,0)
-        print("OUT SIZE 7: ", out.shape)
+        out = out.permute(0,2,1)
+        # print("out shape: ", out.shape, " l1: 512")
+        out = self.fc1(out)
+        out = self.relu(out)
+        # print("out shape: ", out.shape, "l2 = 128")
+        out = self.fc2(out)
+        
+        out = torch.mean(out, dim=1)
+        
+ 
         return out
 
     def predict(self, x):
@@ -448,14 +477,10 @@ class LitMBE(L.LightningModule):
         x, y = batch
         x = x.type(torch.float32)
         y = y.type(torch.float32)
-        print("Batch x dimensions: ", x.shape)
         with torch.no_grad():
             le = self.model.predict(x).squeeze().cpu().numpy()
-            print("le shape: ", le.shape, "  type: ", type(le))
-            print("y.cpu().numpy(): ", y.cpu().numpy().shape, "   type: ", type(y.cpu().numpy()))
             spearman = self.spearman(le, y.cpu().numpy()).statistic
 
-            print("spearman type: ", type(spearman))
             self.log('val_spearman', spearman, on_step = False, on_epoch = True, prog_bar = True)
         
 

@@ -69,7 +69,7 @@ thresh = 1  # TODO: part of the parameters that will be used in bash script
 df_unique = df_unique.assign(set = lambda x: ['high' if w >= thresh else 'low' for w in x['weight']])
 
 # Keep only the sequences labeled as high (the one that have a count geater than one)
-# df_unique = df_unique.loc[df_unique['set'] == 'high']
+df_unique = df_unique.loc[df_unique['set'] == 'high']
 
 df_test_eval = df_unique.sample(frac=1).head(100)
 df_test = df_test_eval.head(50)
@@ -185,7 +185,7 @@ model = LSTM(len(df_train['encoded'].iloc[0][0]), HIDDEN_SIZE , N_LAYERS, pos_we
 lit_model = LitMBE(model, pos_weight=MBEDataset(df_train).get_weights(), wd = WEIGHT_DECAY)
 
 # use weights and biases logger
-wandb_logger = WandbLogger(project='mbe', name = f"LSTM ESM2 l:{N_LAYERS}, hs:{HIDDEN_SIZE}")
+wandb_logger = WandbLogger(project='mbe', name = f"LSTM ESM2 l:{N_LAYERS}, hs:{HIDDEN_SIZE} (MEAN)", group = 'LSTM')
 wandb_logger.experiment.config.update({
     "lr": 0.001,
     "pos_weight": 1,

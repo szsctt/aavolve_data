@@ -6,6 +6,8 @@ import torch
 import lightning as L
 from lightning.pytorch.loggers import WandbLogger
 import esm
+import ast
+import sys
 
 # import classes
 from common_classes import MBEDataset, MBEDataModule,CNN, LitMBE
@@ -23,14 +25,13 @@ procdir = './out/modelling/processed'
 BATCH_SIZE=64
 
 # Parameters:
-FIRST_OUT_CH_SIZE = 100
-NUMBER_OF_LAYERS = 2
-KS = 15 # KERNEL SIZE
-STRIDE = 3
-INC_OF_OUT_LAYERS = 2
-P_KS = 2 # Pooling kernel size
-P_S =  2 # Pooling stride
-WEIGHT_DECAY = 1e-5
+N_LAYERS = int(sys.argv[1])
+OUT_CHANNELS = ast.literal_eval(sys.argv[2])
+KERNEL_SIZE = int(sys.argv[3])
+WEIGHT_DECAY = float(sys.argv[4])
+STRIDE = int(sys.argv[5])
+PADDING = int(sys.argv[6])
+DILATION = int(sys.argv[7])
 
 # (FIRST_OUT_CH_SIZE, STRIDE, 2, 2)
 
@@ -181,15 +182,15 @@ dm.setup()
 
 pw = MBEDataset(df_train).get_weights()
 
-model = CNN(number_of_layers=NUMBER_OF_LAYERS, kernel_size=KS, stride=STRIDE, n_first_out_ch=FIRST_OUT_CH_SIZE, out_layer_inc=INC_OF_OUT_LAYERS, p_ks=P_KS, p_s=P_S, pos_weight=pw)
+model = CNN(n_layers = N_LAYERS, out_channels = OUT_CHANNELS, ks = KERNEL_SIZE, stride = STRIDE, padding = PADDING, dilation = DILATION)
 # model(test[0])[:5]
 
 print("this is supposed to be a tensor: ", type(pw))
 # instantiate lightning model
-lit_model = LitMBE(model, pos_weight= pw, wd = WEIGHT_DECAY)
+lit_model = LitMBE(model, lr=1e-5, pos_weight= pw, wd = WEIGHT_DECAY)
 
 # use weights and biases logger
-wandb_logger = WandbLogger(project='mbe', name = "CNN ESM2")
+wandb_logger = WandbLogger(project='mbe', name = "CNN ESM2 - 2D & BN", group='CNN')
 wandb_logger.experiment.config.update({
     "lr": 0.001,
     "pos_weight": pw,
@@ -200,14 +201,15 @@ wandb_logger.experiment.config.update({
     "enc": "ESM2",
     "loss": "BCEWithLogitsLoss",
     "opt": "Adam",
-    "weight_decay": 1e-5,
-    "numbe_of_out_channels_in _first_conv": FIRST_OUT_CH_SIZE,
-    "n_layers": NUMBER_OF_LAYERS,
-    "kernel_size": KS,
+    "weight_decay": WEIGHT_DECAY,
+    "out channel sizes": OUT_CHANNELS,
+    "n_layers": N_LAYERS,
+    "kernel_size": KERNEL_SIZE,
     "stride": STRIDE,
-    "N_out_mult_increments_in_convs":  INC_OF_OUT_LAYERS,
-    "pooling_kernel_size": P_KS,
-    "pooling_stride": P_S
+    "padding": PADDING,
+    "dilation": DILATION,
+    "dropout": 0.3
+
 })
 
 # train model
