@@ -16,3 +16,13 @@ notebooks/lightning_logs
 notebooks/wandb
 notebooks/mbe
 .ipython
+
+
+wandb
+*.yml
+*.yaml
+*.csv
+*.ckpt
+*.pyc
+notebooks/stored_data_tensor.pt
+scripts/MBE_tunning_TOMAS/wandb_login.py
